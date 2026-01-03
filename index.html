@@ -123,10 +123,106 @@
     .shell {
       position: relative;
       z-index: 1;
-      width: min(980px, 100%);
+      width: min(1400px, 100%);
       display: grid;
       gap: 20px;
-      grid-template-columns: 1fr;
+      grid-template-columns: 1fr 280px;
+      grid-template-rows: auto auto auto;
+    }
+
+    .main-content {
+      grid-column: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .move-history {
+      grid-column: 2;
+      grid-row: 1 / 4;
+      background: var(--panel-strong);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 20px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      max-height: 700px;
+      overflow-y: auto;
+    }
+
+    .history-header {
+      font-weight: 700;
+      font-size: 14px;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      color: var(--accent);
+      text-align: center;
+      padding-bottom: 8px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .history-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .history-item {
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 12px;
+      padding: 10px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .history-item:hover {
+      background: rgba(255, 255, 255, 0.08);
+      border-color: rgba(255, 255, 255, 0.15);
+      transform: translateX(2px);
+    }
+
+    .history-item.active {
+      background: rgba(135, 246, 255, 0.12);
+      border-color: rgba(135, 246, 255, 0.3);
+    }
+
+    .history-move {
+      font-weight: 700;
+      color: var(--accent);
+      font-size: 12px;
+      letter-spacing: 0.3px;
+      text-transform: uppercase;
+      margin-bottom: 6px;
+    }
+
+    .history-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 4px;
+      background: rgba(255, 255, 255, 0.02);
+      padding: 6px;
+      border-radius: 8px;
+    }
+
+    .history-cell {
+      aspect-ratio: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.05);
+      font-size: 8px;
+      font-weight: 700;
+      color: var(--text);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+    }
+
+    .history-cell.filled {
+      background: rgba(135, 246, 255, 0.15);
+      border-color: rgba(135, 246, 255, 0.2);
+      color: var(--accent);
     }
 
     .header {
@@ -385,53 +481,74 @@
         flex: 1;
       }
 
+      .shell {
+        grid-template-columns: 1fr;
+      }
+
+      .move-history {
+        grid-column: 1;
+        grid-row: auto;
+        max-height: 300px;
+      }
+
+      .main-content {
+        grid-column: 1;
+      }
+
     }
   </style>
 </head>
 <body>
   <div class="glow" aria-hidden="true"></div>
   <main class="shell">
-    <div class="header">
-      <div class="title">
-        <h1>2048</h1>
-        <span>Aurora Edition</span>
-      </div>
-      <div class="stats">
-        <div class="stat">
-          <label>Score</label>
-          <div class="value" id="score">0</div>
+    <div class="main-content">
+      <div class="header">
+        <div class="title">
+          <h1>2048</h1>
+          <span>Aurora Edition</span>
         </div>
-        <div class="stat">
-          <label>Best</label>
-          <div class="value" id="best">0</div>
+        <div class="stats">
+          <div class="stat">
+            <label>Score</label>
+            <div class="value" id="score">0</div>
+          </div>
+          <div class="stat">
+            <label>Best</label>
+            <div class="value" id="best">0</div>
+          </div>
+        </div>
+        <div class="controls">
+          <button class="ghost" id="undo">Undo</button>
+          <button class="ghost" id="theme-toggle">Theme: Aurora</button>
+          <button class="ghost" id="mute-toggle">Sound: On</button>
+          <button class="ghost" id="ask-ai">Ask AI</button>
+          <button class="ghost" id="ai-play">AI Play</button>
+          <button id="new-game">New Game</button>
         </div>
       </div>
-      <div class="controls">
-        <button class="ghost" id="undo">Undo</button>
-        <button class="ghost" id="theme-toggle">Theme: Aurora</button>
-        <button class="ghost" id="mute-toggle">Sound: On</button>
-        <button class="ghost" id="ask-ai">Ask AI</button>
-        <button class="ghost" id="ai-play">AI Play</button>
-        <button id="new-game">New Game</button>
-      </div>
+
+      <section class="play-area" aria-live="polite">
+        <div class="grid" id="grid"></div>
+        <div class="message" id="message">
+          <div class="message-box">
+            <h2 id="message-title">You Win!</h2>
+            <p id="message-text">Keep going to chase a higher tile.</p>
+            <button id="continue">Keep Playing</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="info">
+        Use the <span class="keys"><span class="key">↑</span><span class="key">↓</span><span class="key">←</span><span class="key">→</span></span> keys or swipe to slide the tiles. Matching tiles merge and add to your score. Chase 2048—or keep stacking for a new personal best. Tap Undo or hit U/Cmd+Z to rewind one move. Use Theme to swap palettes and Sound to mute.
+      </section>
+
+      <div class="info" id="ai-status">AI ready. Click "Ask AI" to get a suggested move from GPT-5.2 (or the local heuristic fallback).</div>
     </div>
 
-    <section class="play-area" aria-live="polite">
-      <div class="grid" id="grid"></div>
-      <div class="message" id="message">
-        <div class="message-box">
-          <h2 id="message-title">You Win!</h2>
-          <p id="message-text">Keep going to chase a higher tile.</p>
-          <button id="continue">Keep Playing</button>
-        </div>
-      </div>
+    <section class="move-history">
+      <div class="history-header">Move History</div>
+      <div class="history-list" id="history-list"></div>
     </section>
-
-    <section class="info">
-      Use the <span class="keys"><span class="key">↑</span><span class="key">↓</span><span class="key">←</span><span class="key">→</span></span> keys or swipe to slide the tiles. Matching tiles merge and add to your score. Chase 2048—or keep stacking for a new personal best. Tap Undo or hit U/Cmd+Z to rewind one move. Use Theme to swap palettes and Sound to mute.
-    </section>
-
-    <div class="info" id="ai-status">AI ready. Click "Ask AI" to get a suggested move from GPT-5.2 (or the local heuristic fallback).</div>
   </main>
 
   <script>
@@ -470,7 +587,9 @@
     const askAiBtn = document.getElementById('ask-ai');
     const aiPlayBtn = document.getElementById('ai-play');
     const aiStatusEl = document.getElementById('ai-status');
+    const historyListEl = document.getElementById('history-list');
     const cells = [];
+    let moveHistory = [];
 
     function init() {
       createGrid();
@@ -500,10 +619,12 @@
       score = 0;
       acceptInput = true;
       history = [];
+      moveHistory = [];
       hideMessage();
       addRandomTile();
       addRandomTile();
       updateUI();
+      renderMoveHistory();
     }
 
     function addRandomTile() {
@@ -532,8 +653,10 @@
       if (moved) {
         pushHistory(snapshot);
         addRandomTile();
+        recordMoveToHistory(direction, board.map(row => row.slice()));
         updateUI();
         playSound(mergedDuringMove ? 'merge' : 'move');
+        renderMoveHistory();
         if (has2048()) showMessage('You reached 2048!', 'Keep going or start fresh.');
         if (isGameOver()) showMessage('No moves left', 'Try again and push the high score.');
       }
@@ -697,7 +820,11 @@
       score = prev.score;
       hideMessage();
       acceptInput = true;
+      if (moveHistory.length > 0) {
+        moveHistory.pop();
+      }
       updateUI();
+      renderMoveHistory();
     }
 
     function ensureAudio() {
@@ -1013,6 +1140,48 @@
     function hideMessage() {
       acceptInput = true;
       messageEl.classList.remove('show');
+    }
+
+    function recordMoveToHistory(direction, boardState) {
+      moveHistory.push({
+        move: direction,
+        board: boardState.map(row => row.slice())
+      });
+    }
+
+    function renderMoveHistory() {
+      historyListEl.innerHTML = '';
+      moveHistory.forEach((entry, index) => {
+        const item = document.createElement('div');
+        item.className = 'history-item';
+        
+        const moveLabel = document.createElement('div');
+        moveLabel.className = 'history-move';
+        const directions = { 'up': '↑', 'down': '↓', 'left': '←', 'right': '→' };
+        moveLabel.textContent = `Move ${index + 1}: ${directions[entry.move] || entry.move.toUpperCase()}`;
+        item.appendChild(moveLabel);
+
+        const gridDiv = document.createElement('div');
+        gridDiv.className = 'history-grid';
+        
+        for (let r = 0; r < size; r++) {
+          for (let c = 0; c < size; c++) {
+            const value = entry.board[r][c];
+            const cell = document.createElement('div');
+            cell.className = 'history-cell';
+            if (value > 0) {
+              cell.classList.add('filled');
+              cell.textContent = value <= 128 ? value : value / 256 + 'k';
+            }
+            gridDiv.appendChild(cell);
+          }
+        }
+        item.appendChild(gridDiv);
+        historyListEl.appendChild(item);
+      });
+      
+      // Scroll to bottom to show latest move
+      historyListEl.parentElement.scrollTop = historyListEl.parentElement.scrollHeight;
     }
 
     function setupInput() {
