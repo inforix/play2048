@@ -1,0 +1,1084 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>2048 — Aurora Edition</title>
+  <style>
+    :root {
+      --bg: #050812;
+      --bg-gradient: radial-gradient(120% 120% at 18% 20%, #12315a, #060c1e 52%) no-repeat,
+                     radial-gradient(80% 80% at 82% 10%, #351049, transparent 58%) no-repeat,
+                     radial-gradient(140% 120% at 30% 100%, #0f2f3f, transparent 52%) no-repeat,
+                     #050812;
+      --glow-layers:
+        radial-gradient(320px 320px at 25% 20%, rgba(135, 246, 255, 0.24), transparent 60%),
+        radial-gradient(260px 260px at 80% 25%, rgba(255, 177, 227, 0.18), transparent 55%),
+        radial-gradient(220px 220px at 70% 80%, rgba(103, 201, 255, 0.2), transparent 60%);
+      --panel: rgba(255, 255, 255, 0.06);
+      --panel-strong: rgba(255, 255, 255, 0.12);
+      --text: #e8f2ff;
+      --muted: #9fb8dc;
+      --accent: #87f6ff;
+      --accent-strong: #64ddf3;
+      --grid: rgba(255, 255, 255, 0.1);
+      --tile-shadow: 0 14px 40px rgba(0, 0, 0, 0.35);
+      --tile-2-bg: linear-gradient(135deg, #a6f4ff, #35d6ff);
+      --tile-2-text: #032135;
+      --tile-4-bg: linear-gradient(135deg, #c7c1ff, #8a7bff);
+      --tile-4-text: #1b123d;
+      --tile-8-bg: linear-gradient(135deg, #ffe7c2, #f9b572);
+      --tile-8-text: #3c1c05;
+      --tile-16-bg: linear-gradient(135deg, #ffd5b3, #f78e69);
+      --tile-16-text: #3a1504;
+      --tile-32-bg: linear-gradient(135deg, #ffc6c3, #f46b75);
+      --tile-32-text: #32090d;
+      --tile-64-bg: linear-gradient(135deg, #ffb4d3, #f15bb5);
+      --tile-64-text: #300522;
+      --tile-128-bg: linear-gradient(135deg, #f6d9ff, #d0b3ff);
+      --tile-128-text: #2a103f;
+      --tile-256-bg: linear-gradient(135deg, #e3d8ff, #b6a4ff);
+      --tile-256-text: #24103d;
+      --tile-512-bg: linear-gradient(135deg, #d8f0ff, #8fe1ff);
+      --tile-512-text: #04213a;
+      --tile-1024-bg: linear-gradient(135deg, #c9fff3, #7cf2c9);
+      --tile-1024-text: #032725;
+      --tile-2048-bg: linear-gradient(135deg, #d8ffe2, #80ffbe);
+      --tile-2048-text: #0c2d20;
+      --tile-4096-bg: linear-gradient(135deg, #f1f6ff, #9ad7ff);
+      --tile-4096-text: #08203f;
+      --cell-size: clamp(48px, 22vw, 96px);
+      font-family: "Sora", "Space Grotesk", "Manrope", "DM Sans", "Inter", system-ui, -apple-system, sans-serif;
+    }
+
+    body.theme-dawn {
+      --bg: #0d0a18;
+      --bg-gradient: radial-gradient(120% 120% at 18% 20%, #2a214f, #0d0a18 56%) no-repeat,
+                     radial-gradient(90% 80% at 80% 0%, #602a61, transparent 58%) no-repeat,
+                     radial-gradient(130% 120% at 40% 100%, #2c1d3e, transparent 50%) no-repeat,
+                     #0d0a18;
+      --glow-layers:
+        radial-gradient(320px 320px at 25% 20%, rgba(255, 201, 124, 0.28), transparent 60%),
+        radial-gradient(260px 260px at 75% 18%, rgba(255, 140, 178, 0.22), transparent 55%),
+        radial-gradient(220px 220px at 70% 78%, rgba(147, 193, 255, 0.2), transparent 60%);
+      --panel: rgba(255, 255, 255, 0.07);
+      --panel-strong: rgba(255, 255, 255, 0.14);
+      --text: #fdf2ff;
+      --muted: #c5b3d7;
+      --accent: #ffb374;
+      --accent-strong: #ff9f5f;
+      --grid: rgba(255, 255, 255, 0.14);
+      --tile-shadow: 0 14px 40px rgba(0, 0, 0, 0.4);
+      --tile-2-bg: linear-gradient(135deg, #ffd8a5, #ffb66b);
+      --tile-2-text: #3b1702;
+      --tile-4-bg: linear-gradient(135deg, #ffc5b1, #ff9573);
+      --tile-4-text: #35110a;
+      --tile-8-bg: linear-gradient(135deg, #ffd3c7, #ff9e8f);
+      --tile-8-text: #321010;
+      --tile-16-bg: linear-gradient(135deg, #ffc7df, #f57fb6);
+      --tile-16-text: #30101e;
+      --tile-32-bg: linear-gradient(135deg, #f5d0ff, #d989ff);
+      --tile-32-text: #2a0f33;
+      --tile-64-bg: linear-gradient(135deg, #e0d7ff, #a99aff);
+      --tile-64-text: #1f1542;
+      --tile-128-bg: linear-gradient(135deg, #d4e3ff, #97b9ff);
+      --tile-128-text: #0d2041;
+      --tile-256-bg: linear-gradient(135deg, #cdefff, #87e1ff);
+      --tile-256-text: #07263b;
+      --tile-512-bg: linear-gradient(135deg, #d8ffe7, #86ffb5);
+      --tile-512-text: #0c2b1c;
+      --tile-1024-bg: linear-gradient(135deg, #f2ffd9, #d6ff8a);
+      --tile-1024-text: #1d2d0c;
+      --tile-2048-bg: linear-gradient(135deg, #fff2d8, #ffbc6b);
+      --tile-2048-text: #3a1e00;
+      --tile-4096-bg: linear-gradient(135deg, #f1f6ff, #9ad7ff);
+      --tile-4096-text: #08203f;
+      --cell-size: clamp(48px, 22vw, 96px);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg-gradient);
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 32px;
+    }
+
+    .glow {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background: var(--glow-layers);
+      filter: blur(30px);
+      z-index: 0;
+    }
+
+    .shell {
+      position: relative;
+      z-index: 1;
+      width: min(980px, 100%);
+      display: grid;
+      gap: 20px;
+      grid-template-columns: 1fr;
+    }
+
+    .header {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .title {
+      display: flex;
+      align-items: baseline;
+      gap: 12px;
+    }
+
+    .title h1 {
+      margin: 0;
+      font-size: clamp(32px, 5vw, 44px);
+      letter-spacing: -0.5px;
+    }
+
+    .title span {
+      padding: 4px 12px;
+      border-radius: 999px;
+      background: rgba(140, 241, 208, 0.12);
+      color: var(--accent);
+      font-size: 14px;
+      letter-spacing: 0.4px;
+      text-transform: uppercase;
+    }
+
+    .stats {
+      display: flex;
+      gap: 12px;
+    }
+
+    .stat {
+      background: var(--panel);
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 14px;
+      padding: 10px 14px;
+      min-width: 110px;
+      text-align: center;
+    }
+
+    .stat label {
+      display: block;
+      color: var(--muted);
+      font-size: 13px;
+      letter-spacing: 0.6px;
+      text-transform: uppercase;
+      margin-bottom: 6px;
+    }
+
+    .stat .value {
+      font-size: 24px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+    }
+
+    .controls {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    button {
+      border: none;
+      color: #04101f;
+      font-weight: 700;
+      cursor: pointer;
+      padding: 12px 18px;
+      border-radius: 12px;
+      transition: transform 0.1s ease, box-shadow 0.2s ease, background 0.2s ease;
+      background: linear-gradient(120deg, var(--accent-strong), #c4ffd1);
+      box-shadow: 0 10px 30px rgba(140, 241, 208, 0.35);
+    }
+
+    button.ghost {
+      background: rgba(255, 255, 255, 0.06);
+      color: var(--text);
+      box-shadow: none;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+    }
+
+    button:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 14px 36px rgba(140, 241, 208, 0.45);
+    }
+
+    button:active {
+      transform: translateY(0);
+      box-shadow: 0 6px 14px rgba(140, 241, 208, 0.35);
+    }
+
+    .play-area {
+      background: var(--panel-strong);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 20px;
+      padding: 18px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(4, var(--cell-size));
+      grid-template-rows: repeat(4, var(--cell-size));
+      justify-content: center;
+      gap: 12px;
+      background: rgba(255, 255, 255, 0.04);
+      border-radius: 16px;
+      padding: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .cell {
+      position: relative;
+      background: rgba(255, 255, 255, 0.03);
+      border-radius: 14px;
+      width: var(--cell-size);
+      height: var(--cell-size);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: clamp(20px, 3vw, 32px);
+      font-weight: 800;
+      color: #0a0f1c;
+      overflow: hidden;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+      transition: transform 0.1s ease, background 0.2s ease, color 0.2s ease;
+    }
+
+    .cell.filled {
+      box-shadow: var(--tile-shadow);
+    }
+
+    .cell::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      transition: opacity 0.2s ease;
+      background: radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.35), transparent 55%);
+    }
+
+    .cell.filled::after {
+      opacity: 1;
+    }
+
+    .tile-2 { background: var(--tile-2-bg); color: var(--tile-2-text); }
+    .tile-4 { background: var(--tile-4-bg); color: var(--tile-4-text); }
+    .tile-8 { background: var(--tile-8-bg); color: var(--tile-8-text); }
+    .tile-16 { background: var(--tile-16-bg); color: var(--tile-16-text); }
+    .tile-32 { background: var(--tile-32-bg); color: var(--tile-32-text); }
+    .tile-64 { background: var(--tile-64-bg); color: var(--tile-64-text); }
+    .tile-128 { background: var(--tile-128-bg); color: var(--tile-128-text); }
+    .tile-256 { background: var(--tile-256-bg); color: var(--tile-256-text); }
+    .tile-512 { background: var(--tile-512-bg); color: var(--tile-512-text); }
+    .tile-1024 { background: var(--tile-1024-bg); color: var(--tile-1024-text); }
+    .tile-2048 { background: var(--tile-2048-bg); color: var(--tile-2048-text); }
+    .tile-4096, .tile-8192, .tile-16384 { background: var(--tile-4096-bg); color: var(--tile-4096-text); }
+
+    .message {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      background: rgba(5, 9, 18, 0.76);
+      backdrop-filter: blur(6px);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.25s ease;
+    }
+
+    .message.show {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .message-box {
+      text-align: center;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      padding: 26px 30px;
+      border-radius: 16px;
+      box-shadow: 0 16px 50px rgba(0, 0, 0, 0.4);
+    }
+
+    .message-box h2 {
+      margin: 0 0 12px;
+      font-size: 28px;
+      letter-spacing: -0.2px;
+    }
+
+    .message-box p {
+      margin: 0 0 20px;
+      color: var(--muted);
+      font-size: 15px;
+    }
+
+    .info {
+      background: var(--panel);
+      border-radius: 14px;
+      padding: 14px 16px;
+      color: var(--muted);
+      line-height: 1.6;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      transition: color 0.2s ease;
+    }
+
+    .info strong {
+      color: var(--text);
+    }
+
+    .keys {
+      display: inline-flex;
+      gap: 8px;
+      background: rgba(255, 255, 255, 0.04);
+      padding: 6px 10px;
+      border-radius: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.06);
+    }
+
+    .key {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 28px;
+      padding: 6px 10px;
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.08);
+      color: var(--text);
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.3px;
+    }
+
+    @media (max-width: 720px) {
+      body {
+        padding: 20px;
+      }
+
+      .header {
+        gap: 16px;
+      }
+
+      .stats {
+        width: 100%;
+      }
+
+      .stat {
+        flex: 1;
+      }
+
+    }
+  </style>
+</head>
+<body>
+  <div class="glow" aria-hidden="true"></div>
+  <main class="shell">
+    <div class="header">
+      <div class="title">
+        <h1>2048</h1>
+        <span>Aurora Edition</span>
+      </div>
+      <div class="stats">
+        <div class="stat">
+          <label>Score</label>
+          <div class="value" id="score">0</div>
+        </div>
+        <div class="stat">
+          <label>Best</label>
+          <div class="value" id="best">0</div>
+        </div>
+      </div>
+      <div class="controls">
+        <button class="ghost" id="undo">Undo</button>
+        <button class="ghost" id="theme-toggle">Theme: Aurora</button>
+        <button class="ghost" id="mute-toggle">Sound: On</button>
+        <button class="ghost" id="ask-ai">Ask AI</button>
+        <button class="ghost" id="ai-play">AI Play</button>
+        <button id="new-game">New Game</button>
+      </div>
+    </div>
+
+    <section class="play-area" aria-live="polite">
+      <div class="grid" id="grid"></div>
+      <div class="message" id="message">
+        <div class="message-box">
+          <h2 id="message-title">You Win!</h2>
+          <p id="message-text">Keep going to chase a higher tile.</p>
+          <button id="continue">Keep Playing</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="info">
+      Use the <span class="keys"><span class="key">↑</span><span class="key">↓</span><span class="key">←</span><span class="key">→</span></span> keys or swipe to slide the tiles. Matching tiles merge and add to your score. Chase 2048—or keep stacking for a new personal best. Tap Undo or hit U/Cmd+Z to rewind one move. Use Theme to swap palettes and Sound to mute.
+    </section>
+
+    <div class="info" id="ai-status">AI ready. Click "Ask AI" to get a suggested move from GPT-5.2 (or the local heuristic fallback).</div>
+  </main>
+
+  <script>
+    const size = 4;
+    let board = [];
+    let score = 0;
+    let best = 0;
+    let acceptInput = true;
+    let history = [];
+    const historyLimit = 32;
+    let audioCtx = null;
+    let muted = false;
+    let theme = 'aurora';
+    let aiThinking = false;
+    let aiPlaying = false;
+
+    const azureAI = {
+      endpoint: 'https://maritimeai-resource.openai.azure.com',
+      apiKey: '',
+      deployment: 'gpt-5.2',
+      apiVersion: '2025-03-01-preview'
+    };
+    const apiKeyStorageKey = 'aurora-2048-azure-key';
+
+    const gridEl = document.getElementById('grid');
+    const scoreEl = document.getElementById('score');
+    const bestEl = document.getElementById('best');
+    const messageEl = document.getElementById('message');
+    const messageTitle = document.getElementById('message-title');
+    const messageText = document.getElementById('message-text');
+    const continueBtn = document.getElementById('continue');
+    const newGameBtn = document.getElementById('new-game');
+    const undoBtn = document.getElementById('undo');
+    const themeToggleBtn = document.getElementById('theme-toggle');
+    const muteToggleBtn = document.getElementById('mute-toggle');
+    const askAiBtn = document.getElementById('ask-ai');
+    const aiPlayBtn = document.getElementById('ai-play');
+    const aiStatusEl = document.getElementById('ai-status');
+    const cells = [];
+
+    function init() {
+      createGrid();
+      best = Number.parseInt(localStorage.getItem('aurora-2048-best') || '0', 10);
+      bestEl.textContent = best;
+      const storedTheme = localStorage.getItem('aurora-2048-theme');
+      if (storedTheme === 'dawn' || storedTheme === 'aurora') theme = storedTheme;
+      applyTheme(theme);
+      muted = localStorage.getItem('aurora-2048-muted') === '1';
+      updateToggles();
+      loadApiKey();
+      newGame();
+      setupInput();
+    }
+
+    function createGrid() {
+      for (let i = 0; i < size * size; i++) {
+        const cell = document.createElement('div');
+        cell.className = 'cell tile';
+        cells.push(cell);
+        gridEl.appendChild(cell);
+      }
+    }
+
+    function newGame() {
+      board = Array.from({ length: size }, () => Array(size).fill(0));
+      score = 0;
+      acceptInput = true;
+      history = [];
+      hideMessage();
+      addRandomTile();
+      addRandomTile();
+      updateUI();
+    }
+
+    function addRandomTile() {
+      const empty = [];
+      for (let r = 0; r < size; r++) {
+        for (let c = 0; c < size; c++) {
+          if (board[r][c] === 0) empty.push([r, c]);
+        }
+      }
+      if (!empty.length) return;
+      const [r, c] = empty[Math.floor(Math.random() * empty.length)];
+      board[r][c] = Math.random() < 0.9 ? 2 : 4;
+    }
+
+    function move(direction) {
+      if (!acceptInput) return;
+      let moved = false;
+      let mergedDuringMove = false;
+      const snapshot = snapshotState();
+
+      const operate = direction === 'left' || direction === 'right' ? moveHorizontal : moveVertical;
+      const { moved: didMove, merged } = operate(direction);
+      moved = didMove;
+      mergedDuringMove = merged;
+
+      if (moved) {
+        pushHistory(snapshot);
+        addRandomTile();
+        updateUI();
+        playSound(mergedDuringMove ? 'merge' : 'move');
+        if (has2048()) showMessage('You reached 2048!', 'Keep going or start fresh.');
+        if (isGameOver()) showMessage('No moves left', 'Try again and push the high score.');
+      }
+    }
+
+    function moveHorizontal(direction) {
+      let moved = false;
+      let merged = false;
+      for (let r = 0; r < size; r++) {
+        const row = board[r].slice();
+        const processed = processLine(direction === 'left' ? row : row.slice().reverse());
+        const newRow = direction === 'left' ? processed.line : processed.line.slice().reverse();
+        merged = merged || processed.merged;
+        if (!arraysEqual(board[r], newRow)) {
+          board[r] = newRow;
+          moved = true;
+        }
+      }
+      return { moved, merged };
+    }
+
+    function moveVertical(direction) {
+      let moved = false;
+      let merged = false;
+      for (let c = 0; c < size; c++) {
+        const col = board.map(row => row[c]);
+        const processed = processLine(direction === 'up' ? col : col.slice().reverse());
+        const newCol = direction === 'up' ? processed.line : processed.line.slice().reverse();
+        merged = merged || processed.merged;
+        if (!arraysEqual(col, newCol)) {
+          for (let r = 0; r < size; r++) board[r][c] = newCol[r];
+          moved = true;
+        }
+      }
+      return { moved, merged };
+    }
+
+    function processLine(line) {
+      const compact = line.filter(n => n !== 0);
+      let merged = false;
+      for (let i = 0; i < compact.length - 1; i++) {
+        if (compact[i] === compact[i + 1]) {
+          compact[i] *= 2;
+          score += compact[i];
+          compact.splice(i + 1, 1);
+          merged = true;
+        }
+      }
+      while (compact.length < size) compact.push(0);
+      return { line: compact, merged };
+    }
+
+    function arraysEqual(a, b) {
+      return a.length === b.length && a.every((val, i) => val === b[i]);
+    }
+
+    function has2048() {
+      return board.some(row => row.some(cell => cell === 2048));
+    }
+
+    function isGameOver() {
+      for (let r = 0; r < size; r++) {
+        for (let c = 0; c < size; c++) {
+          const current = board[r][c];
+          if (current === 0) return false;
+          if (c < size - 1 && current === board[r][c + 1]) return false;
+          if (r < size - 1 && current === board[r + 1][c]) return false;
+        }
+      }
+      return true;
+    }
+
+    function updateUI() {
+      best = Math.max(best, score);
+      localStorage.setItem('aurora-2048-best', best);
+      scoreEl.textContent = score;
+      bestEl.textContent = best;
+
+      for (let r = 0; r < size; r++) {
+        for (let c = 0; c < size; c++) {
+          const value = board[r][c];
+          const idx = r * size + c;
+          const cell = cells[idx];
+          cell.textContent = value || '';
+          cell.dataset.value = value || '';
+          cell.className = 'cell tile';
+          if (value) {
+            cell.classList.add('filled', `tile-${value <= 4096 ? value : 4096}`);
+            cell.style.transform = 'scale(1.02)';
+            requestAnimationFrame(() => {
+              cell.style.transform = 'scale(1)';
+            });
+          }
+        }
+      }
+    }
+
+    function updateToggles() {
+      themeToggleBtn.textContent = `Theme: ${theme === 'aurora' ? 'Aurora' : 'Dawn'}`;
+      muteToggleBtn.textContent = `Sound: ${muted ? 'Off' : 'On'}`;
+    }
+
+    function applyTheme(name) {
+      const next = name === 'dawn' ? 'dawn' : 'aurora';
+      document.body.classList.remove('theme-aurora', 'theme-dawn');
+      document.body.classList.add(`theme-${next}`);
+      theme = next;
+      localStorage.setItem('aurora-2048-theme', next);
+      updateToggles();
+    }
+
+    function toggleTheme() {
+      applyTheme(theme === 'aurora' ? 'dawn' : 'aurora');
+    }
+
+    function setAiStatus(text) {
+      aiStatusEl.innerHTML = text;
+    }
+
+    function promptForApiKey() {
+      const input = window.prompt('Enter your Azure OpenAI API key (stored locally in this browser):', '');
+      if (input && input.trim()) {
+        azureAI.apiKey = input.trim();
+        localStorage.setItem(apiKeyStorageKey, azureAI.apiKey);
+        setAiStatus('Azure API key saved locally. GPT-5.2 will be used when configured.');
+      } else {
+        setAiStatus('No API key set; AI uses fallback heuristic until you add a key.');
+      }
+    }
+
+    function loadApiKey() {
+      const saved = localStorage.getItem(apiKeyStorageKey);
+      if (saved) {
+        azureAI.apiKey = saved;
+        setAiStatus('Azure API key loaded from local storage.');
+      } else {
+        promptForApiKey();
+      }
+    }
+
+    function delay(ms) {
+      return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    function snapshotState() {
+      return {
+        board: board.map(row => row.slice()),
+        score
+      };
+    }
+
+    function pushHistory(state) {
+      history.push(state);
+      if (history.length > historyLimit) history.shift();
+    }
+
+    function undo() {
+      if (!history.length) return;
+      const prev = history.pop();
+      board = prev.board.map(row => row.slice());
+      score = prev.score;
+      hideMessage();
+      acceptInput = true;
+      updateUI();
+    }
+
+    function ensureAudio() {
+      if (muted) return;
+      if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+    }
+
+    function playSound(type) {
+      if (muted) return;
+      ensureAudio();
+      const ctx = audioCtx;
+      if (!ctx) return;
+      const now = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      const isMerge = type === 'merge';
+      const freq = isMerge ? 420 : 220;
+      const duration = isMerge ? 0.18 : 0.12;
+
+      osc.type = isMerge ? 'triangle' : 'sine';
+      osc.frequency.setValueAtTime(freq, now);
+
+      gain.gain.setValueAtTime(isMerge ? 0.16 : 0.1, now);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + duration);
+    }
+
+    function toggleMute() {
+      muted = !muted;
+      localStorage.setItem('aurora-2048-muted', muted ? '1' : '0');
+      updateToggles();
+      if (!muted) ensureAudio();
+    }
+
+    function formatBoardForAI() {
+      return board.map(row => row.join(' ')).join('\n');
+    }
+
+    function simulateMove(state, direction) {
+      const temp = state.map(row => row.slice());
+      let moved = false;
+      let merged = false;
+      let gain = 0;
+
+      const processLineSim = (line) => {
+        const compact = line.filter(n => n !== 0);
+        for (let i = 0; i < compact.length - 1; i++) {
+          if (compact[i] === compact[i + 1]) {
+            compact[i] *= 2;
+            gain += compact[i];
+            compact.splice(i + 1, 1);
+            merged = true;
+          }
+        }
+        while (compact.length < size) compact.push(0);
+        return compact;
+      };
+
+      if (direction === 'left' || direction === 'right') {
+        for (let r = 0; r < size; r++) {
+          const row = temp[r].slice();
+          const processed = processLineSim(direction === 'left' ? row : row.slice().reverse());
+          const newRow = direction === 'left' ? processed : processed.slice().reverse();
+          if (!arraysEqual(temp[r], newRow)) {
+            temp[r] = newRow;
+            moved = true;
+          }
+        }
+      } else {
+        for (let c = 0; c < size; c++) {
+          const col = temp.map(row => row[c]);
+          const processed = processLineSim(direction === 'up' ? col : col.slice().reverse());
+          const newCol = direction === 'up' ? processed : processed.slice().reverse();
+          if (!arraysEqual(col, newCol)) {
+            for (let r = 0; r < size; r++) temp[r][c] = newCol[r];
+            moved = true;
+          }
+        }
+      }
+
+      return { moved, merged, gain, nextState: temp };
+    }
+
+    function anchorAtTopRight() {
+      const maxVal = Math.max(...board.flat());
+      return maxVal > 0 && board[0][size - 1] === maxVal;
+    }
+
+    function moveIsPossible(dir) {
+      return simulateMove(board, dir).moved;
+    }
+
+    function anchorGuard(direction) {
+      if (!anchorAtTopRight()) return direction;
+      const disallowed = direction === 'left' || direction === 'down';
+      if (!disallowed) return direction;
+      const alternatives = ['right', 'up', 'left', 'down'];
+      for (const alt of alternatives) {
+        if (alt === direction) continue;
+        if ((alt === 'left' || alt === 'down') && anchorAtTopRight()) continue;
+        if (moveIsPossible(alt)) return alt;
+      }
+      return direction;
+    }
+
+    function fallbackHeuristic() {
+      const order = ['left', 'down', 'right', 'up'];
+      let bestMove = null;
+      let bestScore = -Infinity;
+      for (const dir of order) {
+        const result = simulateMove(board, dir);
+        if (!result.moved) continue;
+        const empties = result.nextState.flat().filter(n => n === 0).length;
+        const scoreEstimate = result.gain + empties * 10 + (dir === 'left' || dir === 'down' ? 2 : 0);
+        if (scoreEstimate > bestScore) {
+          bestScore = scoreEstimate;
+          bestMove = dir;
+        }
+      }
+      return bestMove || order.find(dir => simulateMove(board, dir).moved) || 'left';
+    }
+
+    async function fetchAzureMove(payload) {
+      const url = `${azureAI.endpoint}/openai/deployments/${azureAI.deployment}/chat/completions?api-version=${azureAI.apiVersion}`;
+      const prompt = [
+        'You play 2048. Choose the best move. Reply with one word: up, left, or right.',
+        '传进来的是一个数字，每4个数字代表一行，从上往下，从左往右排列。0代表空格。',
+        'Strategy (translated from user):',
+        '1) 将大数字固定在右上角，确保最大数字不离开该位置。',
+        '2) 不使用down，除非没有其他选择，以保护右上角的锚点。优先合并最上面的行和最右边的列。且最上面的行依次从右上角开始数字递减。',
+        '3) 优先填充掉最上面的行，然后是第二行，依此类推。',
+        '4) 避免无效移动；如果一个方向没有效果，选择下一个最佳方向。',
+        'Board (0 = empty):',
+        payload.prompt
+      ].join('\n');
+
+      const body = {
+        messages: [
+          { role: 'system', content: 'You are a concise 2048 move picker. Only reply with a single move word: up, left, or right.请仔细考虑移动的步骤。' },
+          { role: 'user', content: prompt }
+        ],
+        temperature: 0.1,
+      };
+
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'api-key': azureAI.apiKey
+        },
+        body: JSON.stringify(body)
+      });
+
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`Azure OpenAI error: ${res.status} ${text}`);
+      }
+
+      const data = await res.json();
+      const choice = data.choices?.[0]?.message?.content?.trim().toLowerCase() || '';
+      const allowed = ['up', 'down', 'left', 'right'];
+      const move = allowed.find(m => choice.includes(m)) || fallbackHeuristic();
+      return move;
+    }
+
+    async function aiPlay() {
+      if (aiPlaying) {
+        aiPlaying = false;
+        aiPlayBtn.textContent = 'AI Play';
+        askAiBtn.disabled = false;
+        setAiStatus('AI autoplay stopped.');
+        return;
+      }
+
+      aiPlaying = true;
+      aiPlayBtn.textContent = 'Stop AI';
+      askAiBtn.disabled = true;
+      setAiStatus('<strong>AI autoplay</strong> running until win or no moves.');
+
+      while (aiPlaying) {
+        if (has2048()) {
+          setAiStatus('AI reached 2048. Stopping autoplay.');
+          break;
+        }
+        if (isGameOver()) {
+          setAiStatus('No moves left. AI autoplay stopped.');
+          break;
+        }
+
+        const payload = {
+          board: board.map(row => row.slice()),
+          score,
+          best,
+          theme,
+          prompt: formatBoardForAI()
+        };
+
+        let direction = null;
+        try {
+          const { move, source } = await requestAIMove(payload);
+          const guarded = anchorGuard(move);
+          direction = guarded;
+          if (guarded !== move) {
+            setAiStatus(`<strong>AI move (guarded):</strong> ${guarded.toUpperCase()} instead of ${move.toUpperCase()} to protect the top-right anchor (${source}).`);
+          } else {
+            setAiStatus(`<strong>AI move:</strong> ${move.toUpperCase()} (${source}).`);
+          }
+        } catch (err) {
+          console.error(err);
+          direction = fallbackHeuristic();
+          setAiStatus(`AI request failed; using fallback move ${direction.toUpperCase()}.`);
+        }
+
+        if (!direction) {
+          setAiStatus('AI did not return a move. Stopping.');
+          break;
+        }
+
+        const before = JSON.stringify(board);
+        move(direction);
+        if (JSON.stringify(board) === before) {
+          // If move had no effect, try a fallback alternate once.
+          const alt = fallbackHeuristic();
+          if (alt && alt !== direction) {
+            move(alt);
+            setAiStatus(`Move ${direction.toUpperCase()} blocked; tried ${alt.toUpperCase()} instead.`);
+          } else {
+            setAiStatus(`Move ${direction.toUpperCase()} had no effect. Stopping.`);
+            break;
+          }
+        }
+
+        if (!aiPlaying) break;
+        if (has2048()) {
+          setAiStatus('AI reached 2048. Stopping autoplay.');
+          break;
+        }
+        if (isGameOver()) {
+          setAiStatus('No moves left. AI autoplay stopped.');
+          break;
+        }
+
+        await delay(180);
+      }
+
+      aiPlaying = false;
+      aiPlayBtn.textContent = 'AI Play';
+      askAiBtn.disabled = false;
+    }
+
+    async function requestAIMove(payload) {
+      const configured = Boolean(
+        azureAI.apiKey &&
+        azureAI.endpoint &&
+        azureAI.deployment &&
+        !azureAI.endpoint.includes('YOUR-') &&
+        !azureAI.deployment.includes('YOUR-')
+      );
+      if (configured) {
+        const move = await fetchAzureMove(payload);
+        return { move, source: 'GPT-5.2' };
+      }
+      const move = fallbackHeuristic();
+      return { move, source: 'fallback heuristic' };
+    }
+
+    async function callAIForMove() {
+      if (aiThinking) return;
+      aiThinking = true;
+      askAiBtn.disabled = true;
+      setAiStatus('<strong>AI thinking…</strong> formatting board for GPT-5.2');
+
+      const payload = {
+        board: board.map(row => row.slice()),
+        score,
+        best,
+        theme,
+        prompt: formatBoardForAI()
+      };
+
+      try {
+        const { move, source } = await requestAIMove(payload);
+        const guarded = anchorGuard(move);
+        if (guarded !== move) {
+          setAiStatus(`<strong>AI suggests (guarded):</strong> ${guarded.toUpperCase()} instead of ${move.toUpperCase()} to protect the top-right anchor (${source}).`);
+        } else {
+          setAiStatus(`<strong>AI suggests:</strong> ${move.toUpperCase()} (${source}).`);
+        }
+      } catch (err) {
+        console.error(err);
+        const move = fallbackHeuristic();
+        setAiStatus(`AI request failed, using fallback: ${move.toUpperCase()}.`);
+      } finally {
+        aiThinking = false;
+        askAiBtn.disabled = false;
+      }
+    }
+
+    function showMessage(title, text) {
+      acceptInput = false;
+      messageTitle.textContent = title;
+      messageText.textContent = text;
+      messageEl.classList.add('show');
+    }
+
+    function hideMessage() {
+      acceptInput = true;
+      messageEl.classList.remove('show');
+    }
+
+    function setupInput() {
+      document.addEventListener('keydown', (event) => {
+        const key = event.key.toLowerCase();
+        if (key === 'arrowleft' || key === 'a') { event.preventDefault(); move('left'); }
+        if (key === 'arrowright' || key === 'd') { event.preventDefault(); move('right'); }
+        if (key === 'arrowup' || key === 'w') { event.preventDefault(); move('up'); }
+        if (key === 'arrowdown' || key === 's') { event.preventDefault(); move('down'); }
+        if (key === 'u' || (event.metaKey && key === 'z') || (event.ctrlKey && key === 'z')) { event.preventDefault(); undo(); }
+      });
+
+      let touchStart = null;
+      gridEl.addEventListener('touchstart', (e) => {
+        const touch = e.changedTouches[0];
+        touchStart = { x: touch.clientX, y: touch.clientY };
+      }, { passive: true });
+
+      gridEl.addEventListener('touchend', (e) => {
+        if (!touchStart) return;
+        const touch = e.changedTouches[0];
+        const dx = touch.clientX - touchStart.x;
+        const dy = touch.clientY - touchStart.y;
+        const absX = Math.abs(dx);
+        const absY = Math.abs(dy);
+        if (Math.max(absX, absY) < 24) return;
+        if (absX > absY) {
+          move(dx > 0 ? 'right' : 'left');
+        } else {
+          move(dy > 0 ? 'down' : 'up');
+        }
+        touchStart = null;
+      }, { passive: true });
+
+      continueBtn.addEventListener('click', () => {
+        hideMessage();
+        acceptInput = true;
+      });
+
+      newGameBtn.addEventListener('click', () => {
+        if (!muted) ensureAudio();
+        newGame();
+      });
+
+      undoBtn.addEventListener('click', () => {
+        undo();
+      });
+
+      themeToggleBtn.addEventListener('click', () => {
+        toggleTheme();
+      });
+
+      muteToggleBtn.addEventListener('click', () => {
+        toggleMute();
+      });
+
+      askAiBtn.addEventListener('click', () => {
+        callAIForMove();
+      });
+
+      aiPlayBtn.addEventListener('click', () => {
+        aiPlay();
+      });
+    }
+
+    init();
+  </script>
+</body>
+</html>
