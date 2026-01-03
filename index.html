@@ -526,6 +526,7 @@
           <button class="ghost" id="mute-toggle">Sound: On</button>
           <button class="ghost" id="ask-ai">Ask AI</button>
           <button class="ghost" id="ai-play">AI Play</button>
+          <button class="ghost" id="learn-strategy">📚 Learn Strategy</button>
           <button id="new-game">New Game</button>
         </div>
       </div>
@@ -546,6 +547,7 @@
       </section>
 
       <div class="info" id="ai-status">AI ready. Click "Ask AI" to get a suggested move from GPT-5.2 (or the local heuristic fallback).</div>
+      <div class="info" id="strategy-result" style="display: none; border-color: rgba(135, 246, 255, 0.3); background: rgba(135, 246, 255, 0.05);"></div>
     </div>
 
     <section class="move-history">
@@ -567,6 +569,7 @@
     let theme = 'aurora';
     let aiThinking = false;
     let aiPlaying = false;
+    let learnedStrategy = null;
 
     const azureAI = {
       endpoint: 'https://maritimeai-resource.openai.azure.com',
@@ -591,6 +594,8 @@
     const aiPlayBtn = document.getElementById('ai-play');
     const aiStatusEl = document.getElementById('ai-status');
     const historyListEl = document.getElementById('history-list');
+    const strategyResultEl = document.getElementById('strategy-result');
+    const learnStrategyBtn = document.getElementById('learn-strategy');
     const cells = [];
     let moveHistory = [];
 
@@ -604,6 +609,7 @@
       muted = localStorage.getItem('aurora-2048-muted') === '1';
       updateToggles();
       loadApiKey();
+      loadLearnedStrategy();
       newGame();
       setupInput();
     }
@@ -959,10 +965,14 @@
 
     async function fetchAzureMove(payload) {
       const url = `${azureAI.endpoint}/openai/deployments/${azureAI.deployment}/chat/completions?api-version=${azureAI.apiVersion}`;
+      const learnedNote = getLearnedStrategyPrompt();
       const prompt = [
         'You play 2048 - a sliding puzzle game on a 4x4 grid.',
         'BOARD STATE (4 rows, 0=empty):',
         payload.prompt,
+        '',
+        learnedNote ? 'PERSONALIZED STRATEGY:' : '',
+        learnedNote,
         '',
         'CORE STRATEGY - Apply these proven principles (by priority):',
         '',
@@ -1278,6 +1288,119 @@
       aiPlayBtn.addEventListener('click', () => {
         aiPlay();
       });
+
+      learnStrategyBtn.addEventListener('click', () => {
+        analyzeAndLearnStrategy();
+      });
+    }
+
+    function analyzeAndLearnStrategy() {
+      if (moveHistory.length < 2) {
+        strategyResultEl.style.display = 'none';
+        alert('Need at least 2 moves to analyze strategy. Play more!');
+        return;
+      }
+
+      // Analyze move frequency
+      const moveFreq = { up: 0, down: 0, left: 0, right: 0 };
+      const moveSequences = [];
+      
+      moveHistory.forEach(entry => {
+        moveFreq[entry.move]++;
+        moveSequences.push(entry.move);
+      });
+
+      const totalMoves = moveHistory.length;
+      const movePercent = {};
+      Object.keys(moveFreq).forEach(dir => {
+        movePercent[dir] = ((moveFreq[dir] / totalMoves) * 100).toFixed(1);
+      });
+
+      // Identify preferred direction (most used)
+      const preferred = Object.keys(moveFreq).reduce((a, b) => moveFreq[a] > moveFreq[b] ? a : b);
+      const avoided = Object.keys(moveFreq).reduce((a, b) => moveFreq[a] < moveFreq[b] ? a : b);
+
+      // Analyze patterns - look for sequences
+      let upRightCount = 0;
+      for (let i = 0; i < moveSequences.length - 1; i++) {
+        if ((moveSequences[i] === 'up' && moveSequences[i + 1] === 'right') ||
+            (moveSequences[i] === 'right' && moveSequences[i + 1] === 'up')) {
+          upRightCount++;
+        }
+      }
+
+      // Determine style
+      let style = 'Balanced';
+      if (movePercent.up > 35 && movePercent.right > 30) {
+        style = 'Corner Anchor (top-right focused)';
+      } else if (movePercent.left > 35) {
+        style = 'Left-heavy (column stacking)';
+      } else if (movePercent.down < 5 && movePercent.up > 30) {
+        style = 'Cautious (avoids down moves)';
+      }
+
+      // Calculate final score/moves correlation
+      const avgScorePerMove = score > 0 ? (score / totalMoves).toFixed(2) : 0;
+
+      // Store learned strategy
+      learnedStrategy = {
+        moveFreq,
+        movePercent,
+        preferred,
+        avoided,
+        style,
+        avgScorePerMove,
+        totalMoves,
+        finalScore: score
+      };
+
+      // Save to localStorage
+      localStorage.setItem('aurora-2048-learned-strategy', JSON.stringify(learnedStrategy));
+
+      // Display results
+      displayStrategyAnalysis();
+    }
+
+    function displayStrategyAnalysis() {
+      if (!learnedStrategy) return;
+
+      const { movePercent, preferred, avoided, style, avgScorePerMove, totalMoves, finalScore } = learnedStrategy;
+      const dirs = { up: '↑', down: '↓', left: '←', right: '→' };
+
+      const html = `
+        <strong>📊 Your Strategy Profile (${totalMoves} moves, Score: ${finalScore})</strong><br>
+        <small style="color: var(--accent);">
+          <strong>Style:</strong> ${style}<br>
+          <strong>Move Distribution:</strong> ↑ ${movePercent.up}% | → ${movePercent.right}% | ← ${movePercent.left}% | ↓ ${movePercent.down}%<br>
+          <strong>Preferred:</strong> ${dirs[preferred]} (${movePercent[preferred]}%) | <strong>Avoided:</strong> ${dirs[avoided]} (${movePercent[avoided]}%)<br>
+          <strong>Avg Score/Move:</strong> ${avgScorePerMove} points/move<br>
+          <em>✓ AI will now learn from your strategy!</em>
+        </small>
+      `;
+
+      strategyResultEl.innerHTML = html;
+      strategyResultEl.style.display = 'block';
+    }
+
+    function getLearnedStrategyPrompt() {
+      if (!learnedStrategy) return '';
+
+      const { movePercent, preferred, avoided, style } = learnedStrategy;
+      return `
+LEARNED FROM YOUR GAMEPLAY:
+- Your style: ${style}
+- You prefer moving ${preferred.toUpperCase()} (${movePercent[preferred]}% of moves)
+- You rarely move ${avoided.toUpperCase()} (${movePercent[avoided]}%)
+- UP: ${movePercent.up}%, RIGHT: ${movePercent.right}%, LEFT: ${movePercent.left}%, DOWN: ${movePercent.down}%
+
+Please suggest moves similar to this style while keeping proven 2048 strategies in mind.`;
+    }
+
+    function loadLearnedStrategy() {
+      const saved = localStorage.getItem('aurora-2048-learned-strategy');
+      if (saved) {
+        learnedStrategy = JSON.parse(saved);
+      }
     }
 
     init();
