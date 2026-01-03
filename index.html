@@ -147,8 +147,11 @@
       display: flex;
       flex-direction: column;
       gap: 12px;
-      max-height: 700px;
+      max-height: calc(100vh - 64px);
       overflow-y: auto;
+      align-self: start;
+      position: sticky;
+      top: 32px;
     }
 
     .history-header {
@@ -957,20 +960,50 @@
     async function fetchAzureMove(payload) {
       const url = `${azureAI.endpoint}/openai/deployments/${azureAI.deployment}/chat/completions?api-version=${azureAI.apiVersion}`;
       const prompt = [
-        'You play 2048. Choose the best move. Reply with one word: up, left, or right.',
-        '传进来的是一个数字，每4个数字代表一行，从上往下，从左往右排列。0代表空格。',
-        'Strategy (translated from user):',
-        '1) 将大数字固定在右上角，确保最大数字不离开该位置。',
-        '2) 不使用down，除非没有其他选择，以保护右上角的锚点。优先合并最上面的行和最右边的列。且最上面的行依次从右上角开始数字递减。',
-        '3) 优先填充掉最上面的行，然后是第二行，依此类推。',
-        '4) 避免无效移动；如果一个方向没有效果，选择下一个最佳方向。',
-        'Board (0 = empty):',
-        payload.prompt
+        'You play 2048 - a sliding puzzle game on a 4x4 grid.',
+        'BOARD STATE (4 rows, 0=empty):',
+        payload.prompt,
+        '',
+        'CORE STRATEGY - Apply these proven principles (by priority):',
+        '',
+        '1. MONOTONICITY (Essential): Keep rows and columns monotonically decreasing in one direction.',
+        '   - Organize tiles in a consistent pattern (e.g., top-left to bottom-right snake pattern).',
+        '   - Prevents orphaned tiles and maintains flexibility.',
+        '',
+        '2. CORNER ANCHOR (Critical): Keep the LARGEST tile in the top-right corner.',
+        '   - Never move left or down if the max tile is in top-right (except forced moves).',
+        '   - Fill the top row with decreasing values from right to left.',
+        '   - This creates a "fortress" for large tiles.',
+        '',
+        '3. SMOOTHNESS (Important): Minimize value differences between adjacent tiles.',
+        '   - Align similar-valued tiles together.',
+        '   - This enables efficient merging along rows/columns.',
+        '',
+        '4. MERGE OPPORTUNITIES (Important): Look for adjacent equal-valued tiles.',
+        '   - Prioritize moves that create cascading merges.',
+        '   - Merging tiles frees up space and increases score.',
+        '',
+        '5. FREE SPACE (Important): Maximize empty cells to maintain flexibility.',
+        '   - Avoid filling the board completely.',
+        '   - Empty spaces let you recover from bad positions.',
+        '',
+        'MOVE GUIDELINES:',
+        '- Prefer UP and RIGHT (moves toward the anchor corner).',
+        '- Use LEFT cautiously (only when it maintains monotonicity and anchor safety).',
+        '- AVOID DOWN (pulls anchor away from top-right corner; use only as last resort).',
+        '',
+        'DECISION PROCESS:',
+        '1. Check which moves preserve monotonicity.',
+        '2. Among valid moves, prefer those that move the largest tile toward top-right.',
+        '3. Choose the move that creates the most merge opportunities.',
+        '4. Evaluate which move leaves the most empty space.',
+        '',
+        'REPLY FORMAT: Respond with exactly ONE word: up, down, left, or right'
       ].join('\n');
 
       const body = {
         messages: [
-          { role: 'system', content: 'You are a concise 2048 move picker. Only reply with a single move word: up, left, or right.请仔细考虑移动的步骤。' },
+          { role: 'system', content: 'You are an expert 2048 AI strategist. Analyze the board carefully and reply with ONLY ONE move word: up, left, right, or down. Consider the latest proven strategies.' },
           { role: 'user', content: prompt }
         ],
         temperature: 0.1,
