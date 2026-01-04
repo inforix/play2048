@@ -594,8 +594,10 @@
           <button class="ghost" id="ask-ai">Ask AI</button>
           <button class="ghost" id="ai-play">AI Play</button>
           <button class="ghost" id="learn-strategy">📚 Learn Strategy</button>
+          <button class="ghost" id="learn-from-collection">📚 Learn from All Games</button>
           <button class="ghost" id="clear-strategy">🗑️ Clear Strategy</button>
           <button id="new-game">New Game</button>
+          <input type="file" id="import-histories" multiple accept=".json" style="display: none;">
         </div>
       </div>
 
@@ -620,14 +622,44 @@
         <label style="display: block; margin-bottom: 6px; font-weight: bold;">📝 Learned Strategy Prompt (sent to AI):</label>
         <textarea id="learned-note" readonly rows="8" style="width: 100%; background: rgba(0,0,0,0.3); color: var(--text); border: 1px solid var(--accent); border-radius: 8px; padding: 10px; font-family: monospace; font-size: 12px; resize: vertical;"></textarea>
       </div>
+      <div class="info" id="game-collection-panel" style="border-color: rgba(255, 177, 227, 0.3); background: rgba(255, 177, 227, 0.05);">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+          <label style="font-weight: bold;">📦 Game Collection</label>
+          <div style="display: flex; gap: 8px;">
+            <button class="ghost" id="import-btn" style="padding: 6px 12px; font-size: 12px;">📥 Import JSON</button>
+            <button class="ghost" id="clear-collection" style="padding: 6px 12px; font-size: 12px;">🗑️ Clear All</button>
+          </div>
+        </div>
+        <div id="collection-stats" style="font-size: 13px; color: var(--muted);">No games saved yet. Complete games to build your collection.</div>
+        <div id="collection-list" style="margin-top: 10px; max-height: 150px; overflow-y: auto;"></div>
+      </div>
     </div>
 
     <section class="move-history">
       <div class="history-header">
         <span>Move History</span>
         <div style="display: flex; gap: 8px;">
-          <button class="copy-history-btn" id="copy-history">Copy</button>
-          <button class="copy-history-btn" id="download-history">Download</button>
+          <button class="copy-history-btn" id="copy-history" title="Copy to clipboard">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+            </svg>
+          </button>
+          <button class="copy-history-btn" id="download-history" title="Download as JSON">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="7 10 12 15 17 10"></polyline>
+              <line x1="12" y1="15" x2="12" y2="3"></line>
+            </svg>
+          </button>
+          <button class="copy-history-btn" id="load-history" title="Load from JSON file">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="17 8 12 3 7 8"></polyline>
+              <line x1="12" y1="3" x2="12" y2="15"></line>
+            </svg>
+          </button>
+          <input type="file" id="load-history-input" accept=".json" style="display: none;">
         </div>
       </div>
       <div class="history-list" id="history-list"></div>
@@ -649,6 +681,8 @@
     let aiPlaying = false;
     let learnedStrategy = null;
     let selectedModel = 'gpt-5.2';
+    let gameCollection = [];
+    const gameCollectionStorageKey = 'aurora-2048-games-collection';
 
     const aiModels = {
       'gpt-5.2': {
@@ -782,6 +816,7 @@
       loadSelectedStrategy();
       loadSelectedModel();
       loadLearnedStrategy();
+      loadGameCollection();
       if (!loadGameState()) {
         newGame();
       }
@@ -846,7 +881,10 @@
         renderMoveHistory();
         saveGameState();
         // if (has2048()) showMessage('You reached 2048!', 'Keep going or start fresh.');
-        if (isGameOver()) showMessage('No moves left', 'Try again and push the high score.');
+        if (isGameOver()) {
+          saveGameToCollection();
+          showMessage('No moves left', 'Try again and push the high score.');
+        }
       }
     }
 
@@ -1975,6 +2013,19 @@
         clearLearnedStrategy();
       });
 
+      const learnFromCollectionBtn = document.getElementById('learn-from-collection');
+      learnFromCollectionBtn.addEventListener('click', () => {
+        analyzeMultipleGames();
+      });
+
+      const importBtn = document.getElementById('import-btn');
+      const importInput = document.getElementById('import-histories');
+      importBtn.addEventListener('click', () => importInput.click());
+      importInput.addEventListener('change', (e) => importHistoryFiles(e.target.files));
+
+      const clearCollectionBtn = document.getElementById('clear-collection');
+      clearCollectionBtn.addEventListener('click', clearGameCollection);
+
       aiModelSelect.addEventListener('change', () => {
         selectedModel = aiModelSelect.value;
         localStorage.setItem(modelStorageKey, selectedModel);
@@ -1990,6 +2041,16 @@
       const downloadHistoryBtn = document.getElementById('download-history');
       downloadHistoryBtn.addEventListener('click', () => {
         downloadMoveHistoryJSON();
+      });
+
+      const loadHistoryBtn = document.getElementById('load-history');
+      const loadHistoryInput = document.getElementById('load-history-input');
+      loadHistoryBtn.addEventListener('click', () => loadHistoryInput.click());
+      loadHistoryInput.addEventListener('change', (e) => {
+        if (e.target.files && e.target.files[0]) {
+          loadMoveHistoryFromJSON(e.target.files[0]);
+          e.target.value = ''; // Reset input
+        }
       });
     }
 
@@ -2039,6 +2100,64 @@
         downloadHistoryBtn.style.background = '';
         downloadHistoryBtn.style.borderColor = '';
       }, 2000);
+    }
+
+    async function loadMoveHistoryFromJSON(file) {
+      try {
+        const text = await file.text();
+        const data = JSON.parse(text);
+        
+        // Validate the data structure
+        if (!data.moves || !Array.isArray(data.moves) || data.moves.length === 0) {
+          alert('Invalid JSON file: no moves found.');
+          return;
+        }
+        
+        // Confirm loading
+        if (moveHistory.length > 0) {
+          if (!confirm(`This will replace your current game (${moveHistory.length} moves). Continue?`)) {
+            return;
+          }
+        }
+        
+        // Load the move history
+        moveHistory = data.moves.map(m => ({
+          move: m.direction || m.move,
+          board: m.boardState || m.board
+        }));
+        
+        // Restore the last board state
+        const lastMove = moveHistory[moveHistory.length - 1];
+        board = lastMove.board.map(row => row.slice());
+        
+        // Recalculate score from board
+        score = data.finalScore || 0;
+        
+        // Reset history stack
+        history = [];
+        
+        // Update UI
+        acceptInput = true;
+        hideMessage();
+        updateUI();
+        renderMoveHistory();
+        saveGameState();
+        
+        setAiStatus(`Loaded ${moveHistory.length} moves from ${file.name}. Score: ${score}`);
+        
+        // Visual feedback on button
+        const loadHistoryBtn = document.getElementById('load-history');
+        loadHistoryBtn.style.background = 'rgba(135, 246, 255, 0.2)';
+        loadHistoryBtn.style.borderColor = 'rgba(135, 246, 255, 0.4)';
+        setTimeout(() => {
+          loadHistoryBtn.style.background = '';
+          loadHistoryBtn.style.borderColor = '';
+        }, 2000);
+        
+      } catch (err) {
+        console.error('Failed to load JSON:', err);
+        alert('Failed to load JSON file: ' + err.message);
+      }
     }
 
     function copyMoveHistory() {
@@ -2396,13 +2515,13 @@ Respond in EXACTLY this JSON format (no other text):
     function getLearnedStrategyPrompt() {
       if (!learnedStrategy) return '';
 
-      const { style, rules, cornerStrategy, mergeStrategy, emergencyMoves, avoidPatterns, summary } = learnedStrategy;
+      const { style, rules, cornerStrategy, mergeStrategy, emergencyMoves, avoidPatterns, winningPatterns, summary, multiGame, gamesAnalyzed } = learnedStrategy;
       
-      let prompt = `
-LEARNED STRATEGY FROM PLAYER'S GAMEPLAY:
-Style: ${style}
+      let prompt = multiGame 
+        ? `\nLEARNED STRATEGY FROM ${gamesAnalyzed} GAMES:\nStyle: ${style}`
+        : `\nLEARNED STRATEGY FROM PLAYER'S GAMEPLAY:\nStyle: ${style}`;
 
-DECISION RULES - Follow these when choosing moves:`;
+      prompt += `\n\nDECISION RULES - Follow these when choosing moves:`;
 
       if (rules && rules.length > 0) {
         rules.forEach((rule, i) => {
@@ -2416,6 +2535,10 @@ DECISION RULES - Follow these when choosing moves:`;
       
       if (mergeStrategy) {
         prompt += `\n\nMERGE STRATEGY:\n${mergeStrategy}`;
+      }
+
+      if (winningPatterns) {
+        prompt += `\n\nWINNING PATTERNS (from high-scoring games):\n${winningPatterns}`;
       }
 
       if (emergencyMoves) {
@@ -2442,6 +2565,306 @@ DECISION RULES - Follow these when choosing moves:`;
         // Display saved strategy on load
         displayStrategyAnalysis();
       }
+    }
+
+    // ========== GAME COLLECTION FUNCTIONS ==========
+    
+    function loadGameCollection() {
+      const saved = localStorage.getItem(gameCollectionStorageKey);
+      if (saved) {
+        gameCollection = JSON.parse(saved);
+      }
+      renderCollectionStats();
+    }
+
+    function saveGameCollection() {
+      localStorage.setItem(gameCollectionStorageKey, JSON.stringify(gameCollection));
+      renderCollectionStats();
+    }
+
+    function saveGameToCollection() {
+      if (moveHistory.length < 5) return; // Don't save very short games
+      
+      const maxTile = Math.max(...board.flat());
+      const gameData = {
+        id: Date.now(),
+        timestamp: new Date().toISOString(),
+        moves: moveHistory.map(m => ({ move: m.move, board: m.board })),
+        totalMoves: moveHistory.length,
+        finalScore: score,
+        maxTile: maxTile,
+        won: maxTile >= 2048
+      };
+      
+      gameCollection.push(gameData);
+      
+      // Keep last 50 games max
+      if (gameCollection.length > 50) {
+        gameCollection = gameCollection.slice(-50);
+      }
+      
+      saveGameCollection();
+      setAiStatus(`Game saved to collection! (${gameCollection.length} games total)`);
+    }
+
+    function clearGameCollection() {
+      if (!confirm(`Delete all ${gameCollection.length} saved games?`)) return;
+      gameCollection = [];
+      saveGameCollection();
+      setAiStatus('Game collection cleared.');
+    }
+
+    function removeGameFromCollection(gameId) {
+      gameCollection = gameCollection.filter(g => g.id !== gameId);
+      saveGameCollection();
+    }
+
+    function renderCollectionStats() {
+      const statsEl = document.getElementById('collection-stats');
+      const listEl = document.getElementById('collection-list');
+      
+      if (gameCollection.length === 0) {
+        statsEl.innerHTML = 'No games saved yet. Complete games to build your collection, or import JSON files.';
+        listEl.innerHTML = '';
+        return;
+      }
+      
+      const totalGames = gameCollection.length;
+      const avgScore = Math.round(gameCollection.reduce((sum, g) => sum + g.finalScore, 0) / totalGames);
+      const bestScore = Math.max(...gameCollection.map(g => g.finalScore));
+      const wins = gameCollection.filter(g => g.won).length;
+      const maxTileEver = Math.max(...gameCollection.map(g => g.maxTile));
+      
+      statsEl.innerHTML = `
+        <strong>${totalGames}</strong> games saved | 
+        Avg: <strong>${avgScore}</strong> | 
+        Best: <strong>${bestScore}</strong> | 
+        Wins: <strong>${wins}</strong> | 
+        Max Tile: <strong>${maxTileEver}</strong>
+      `;
+      
+      // Render game list (last 10)
+      const recentGames = gameCollection.slice(-10).reverse();
+      listEl.innerHTML = recentGames.map(g => `
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 6px 8px; background: rgba(255,255,255,0.03); border-radius: 6px; margin-bottom: 4px; font-size: 12px;">
+          <span>${new Date(g.timestamp).toLocaleDateString()} - Score: ${g.finalScore} (${g.totalMoves} moves, max ${g.maxTile}${g.won ? ' 🏆' : ''})</span>
+          <button onclick="removeGameFromCollection(${g.id})" style="background: none; border: none; color: var(--muted); cursor: pointer; padding: 2px 6px;">&times;</button>
+        </div>
+      `).join('');
+    }
+
+    async function importHistoryFiles(files) {
+      if (!files || files.length === 0) return;
+      
+      let imported = 0;
+      let errors = 0;
+      
+      for (const file of files) {
+        try {
+          const text = await file.text();
+          const data = JSON.parse(text);
+          
+          // Handle both single game and array format
+          const games = Array.isArray(data) ? data : [data];
+          
+          for (const game of games) {
+            // Validate and normalize the data
+            if (game.moves && game.moves.length > 0) {
+              const normalized = {
+                id: Date.now() + Math.random() * 1000,
+                timestamp: game.timestamp || new Date().toISOString(),
+                moves: game.moves.map(m => ({
+                  move: m.direction || m.move,
+                  board: m.boardState || m.board
+                })),
+                totalMoves: game.totalMoves || game.moves.length,
+                finalScore: game.finalScore || game.score || 0,
+                maxTile: game.maxTile || Math.max(...(game.moves[game.moves.length - 1]?.boardState || game.moves[game.moves.length - 1]?.board || []).flat()),
+                won: game.won || false,
+                imported: true,
+                source: file.name
+              };
+              gameCollection.push(normalized);
+              imported++;
+            }
+          }
+        } catch (err) {
+          console.error(`Failed to import ${file.name}:`, err);
+          errors++;
+        }
+      }
+      
+      // Keep max 50 games
+      if (gameCollection.length > 50) {
+        gameCollection = gameCollection.slice(-50);
+      }
+      
+      saveGameCollection();
+      
+      const msg = `Imported ${imported} game(s)${errors > 0 ? `, ${errors} failed` : ''}. Collection now has ${gameCollection.length} games.`;
+      setAiStatus(msg);
+      
+      // Reset file input
+      document.getElementById('import-histories').value = '';
+    }
+
+    async function analyzeMultipleGames() {
+      if (gameCollection.length < 2) {
+        alert('Need at least 2 games in collection. Play more games or import JSON files!');
+        return;
+      }
+
+      const configured = Boolean(
+        azureAI.apiKey &&
+        aiModels[selectedModel] &&
+        !aiModels[selectedModel].endpoint.includes('YOUR-')
+      );
+
+      if (!configured) {
+        alert('Please configure Azure OpenAI API key first.');
+        return;
+      }
+
+      const learnFromCollectionBtn = document.getElementById('learn-from-collection');
+      learnFromCollectionBtn.disabled = true;
+      learnFromCollectionBtn.textContent = '🔄 Analyzing...';
+      strategyResultEl.innerHTML = `<strong>🤖 ${selectedModel} is analyzing ${gameCollection.length} games...</strong>`;
+      strategyResultEl.style.display = 'block';
+
+      // Sort games by score to identify best games
+      const sortedGames = [...gameCollection].sort((a, b) => b.finalScore - a.finalScore);
+      const topGames = sortedGames.slice(0, 5);
+      const bottomGames = sortedGames.slice(-3);
+
+      // Build analysis prompt with key moves from multiple games
+      const formatGameSummary = (game, label) => {
+        const keyMoves = [];
+        // Sample key moves (early, mid, late game)
+        const indices = [0, Math.floor(game.moves.length * 0.25), Math.floor(game.moves.length * 0.5), Math.floor(game.moves.length * 0.75), game.moves.length - 1];
+        for (const idx of indices) {
+          if (idx < game.moves.length) {
+            const m = game.moves[idx];
+            const boardStr = m.board.map(row => row.map(v => v === 0 ? '.' : v).join('\t')).join('\n');
+            keyMoves.push(`Move ${idx + 1}: ${m.move.toUpperCase()}\n${boardStr}`);
+          }
+        }
+        return `${label} (Score: ${game.finalScore}, ${game.totalMoves} moves, max tile ${game.maxTile}):\n${keyMoves.join('\n---\n')}`;
+      };
+
+      const prompt = `You are an expert 2048 strategy coach. Analyze these games to learn winning patterns.
+
+=== TOP PERFORMING GAMES ===
+${topGames.map((g, i) => formatGameSummary(g, `GOOD GAME ${i + 1}`)).join('\n\n======\n\n')}
+
+=== LOWER PERFORMING GAMES ===
+${bottomGames.map((g, i) => formatGameSummary(g, `WORSE GAME ${i + 1}`)).join('\n\n======\n\n')}
+
+Compare the high-scoring games vs low-scoring games. Identify:
+1. What patterns appear in HIGH-scoring games that are MISSING in low-scoring ones?
+2. What mistakes appear in LOW-scoring games?
+3. What are the CONSISTENT strategies that lead to success?
+
+Respond in EXACTLY this JSON format:
+{
+  "style": "Name for the optimal play style based on these games",
+  "rules": [
+    "Rule 1: When [situation], move [direction] because [reason]",
+    "Rule 2: ...",
+    "Rule 3: ...",
+    "Rule 4: ...",
+    "Rule 5: ..."
+  ],
+  "cornerStrategy": "Corner anchoring pattern observed in winning games",
+  "mergeStrategy": "How winning games prioritize merges",
+  "emergencyMoves": "Recovery patterns when board fills up",
+  "avoidPatterns": "Mistakes to avoid (seen in losing games)",
+  "winningPatterns": "Key patterns that distinguish high scores from low scores",
+  "summary": "2-3 sentence summary of the optimal strategy learned from these ${gameCollection.length} games"
+}`;
+
+      try {
+        const model = aiModels[selectedModel];
+        const url = `${model.endpoint}/openai/deployments/${model.deployment}/chat/completions?api-version=${model.apiVersion}`;
+        const body = {
+          messages: [
+            { role: 'system', content: 'You are an expert 2048 strategy analyst. Respond only with valid JSON.' },
+            { role: 'user', content: prompt }
+          ],
+          temperature: 0.3,
+        };
+
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'api-key': azureAI.apiKey
+          },
+          body: JSON.stringify(body)
+        });
+
+        if (!res.ok) throw new Error(`${selectedModel} error: ${res.status}`);
+
+        const data = await res.json();
+        const content = data.choices?.[0]?.message?.content?.trim() || '';
+        
+        const jsonMatch = content.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) throw new Error('Invalid AI response format');
+
+        const aiAnalysis = JSON.parse(jsonMatch[0]);
+
+        learnedStrategy = {
+          style: aiAnalysis.style || 'Multi-Game Learned',
+          rules: aiAnalysis.rules || [],
+          cornerStrategy: aiAnalysis.cornerStrategy || '',
+          mergeStrategy: aiAnalysis.mergeStrategy || '',
+          emergencyMoves: aiAnalysis.emergencyMoves || '',
+          avoidPatterns: aiAnalysis.avoidPatterns || '',
+          winningPatterns: aiAnalysis.winningPatterns || '',
+          summary: aiAnalysis.summary || '',
+          totalMoves: gameCollection.reduce((sum, g) => sum + g.totalMoves, 0),
+          gamesAnalyzed: gameCollection.length,
+          finalScore: Math.max(...gameCollection.map(g => g.finalScore)),
+          analyzedByAI: true,
+          multiGame: true
+        };
+
+        localStorage.setItem('aurora-2048-learned-strategy', JSON.stringify(learnedStrategy));
+        displayMultiGameAnalysis();
+
+      } catch (err) {
+        console.error('Multi-game analysis error:', err);
+        strategyResultEl.innerHTML = `<strong>❌ Analysis Failed:</strong> ${err.message}`;
+      } finally {
+        learnFromCollectionBtn.disabled = false;
+        learnFromCollectionBtn.textContent = '📚 Learn from All Games';
+      }
+    }
+
+    function displayMultiGameAnalysis() {
+      if (!learnedStrategy) return;
+
+      const { style, rules, cornerStrategy, mergeStrategy, winningPatterns, summary, gamesAnalyzed, finalScore } = learnedStrategy;
+
+      const rulesHtml = rules && rules.length > 0 
+        ? `<strong>Decision Rules:</strong><br>${rules.map(r => `• ${r}`).join('<br>')}<br>` 
+        : '';
+      
+      const html = `
+        <strong>🤖 Multi-Game Strategy (${gamesAnalyzed} games analyzed, Best: ${finalScore})</strong><br>
+        <small style="color: var(--accent);">
+          <strong>Style:</strong> ${style}<br>
+          ${cornerStrategy ? `<strong>Corner Strategy:</strong> ${cornerStrategy}<br>` : ''}
+          ${mergeStrategy ? `<strong>Merge Strategy:</strong> ${mergeStrategy}<br>` : ''}
+          ${winningPatterns ? `<strong>Winning Patterns:</strong> ${winningPatterns}<br>` : ''}
+          ${rulesHtml}
+          ${summary ? `<strong>Summary:</strong> ${summary}<br>` : ''}
+          <em>✓ AI will now use patterns learned from your best games!</em>
+        </small>
+      `;
+
+      strategyResultEl.innerHTML = html;
+      strategyResultEl.style.display = 'block';
+      updateLearnedNoteDisplay();
     }
 
     init();
