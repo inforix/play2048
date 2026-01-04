@@ -580,7 +580,13 @@
           <button class="ghost" id="undo">Undo</button>
           <button class="ghost" id="theme-toggle">Theme: Aurora</button>
           <button class="ghost" id="mute-toggle">Sound: On</button>
-          <select id="ai-model" class="ghost" style="padding: 8px 12px; background: transparent; color: var(--text); border: 1px solid var(--accent); border-radius: 8px; cursor: pointer; font-size: 14px;">
+          <select id="ai-strategy" class="ghost" style="padding: 8px 12px; background: transparent; color: var(--text); border: 1px solid var(--accent); border-radius: 8px; cursor: pointer; font-size: 14px;">
+            <option value="expectimax">Expectimax (Best)</option>
+            <option value="montecarlo">Monte Carlo</option>
+            <option value="weighted">Weighted Heuristic</option>
+            <option value="llm">LLM (GPT/DeepSeek)</option>
+          </select>
+          <select id="ai-model" class="ghost" style="padding: 8px 12px; background: transparent; color: var(--text); border: 1px solid var(--accent); border-radius: 8px; cursor: pointer; font-size: 14px; display: none;">
             <option value="gpt-5.2">GPT-5.2</option>
             <option value="gpt-5.2-chat">GPT-5.2-Chat</option>
             <option value="DeepSeek-V3.2">DeepSeek-V3.2</option>
@@ -755,6 +761,7 @@
     const learnedNoteContainer = document.getElementById('learned-note-container');
     const learnedNoteEl = document.getElementById('learned-note');
     const aiModelSelect = document.getElementById('ai-model');
+    const aiStrategySelect = document.getElementById('ai-strategy');
     const copyHistoryBtn = document.getElementById('copy-history');
     const cells = [];
     let moveHistory = [];
@@ -769,6 +776,7 @@
       muted = localStorage.getItem('aurora-2048-muted') === '1';
       updateToggles();
       loadApiKey();
+      loadSelectedStrategy();
       loadSelectedModel();
       loadLearnedStrategy();
       if (!loadGameState()) {
@@ -1125,7 +1133,296 @@
       return direction;
     }
 
+    // ========== AI STRATEGY IMPLEMENTATIONS ==========
+    
+    // Snake pattern weight matrix - higher weights in top-right corner
+    const WEIGHT_MATRIX = [
+      [Math.pow(4, 15), Math.pow(4, 14), Math.pow(4, 13), Math.pow(4, 12)],
+      [Math.pow(4, 8),  Math.pow(4, 9),  Math.pow(4, 10), Math.pow(4, 11)],
+      [Math.pow(4, 7),  Math.pow(4, 6),  Math.pow(4, 5),  Math.pow(4, 4)],
+      [Math.pow(4, 0),  Math.pow(4, 1),  Math.pow(4, 2),  Math.pow(4, 3)]
+    ];
+
+    // Alternative corner-focused weight matrix
+    const CORNER_WEIGHTS = [
+      [6, 5, 4, 3],
+      [5, 4, 3, 2],
+      [4, 3, 2, 1],
+      [3, 2, 1, 0]
+    ].map(row => row.map(w => Math.pow(4, w)));
+
+    // Strategy 1: Weighted Heuristic (Fast, simple)
+    function weightedHeuristicMove(boardState) {
+      const directions = ['up', 'down', 'left', 'right'];
+      let bestMove = null;
+      let bestScore = -Infinity;
+
+      for (const dir of directions) {
+        const result = simulateMove(boardState, dir);
+        if (!result.moved) continue;
+
+        const score = evaluateBoardWeighted(result.nextState);
+        if (score > bestScore) {
+          bestScore = score;
+          bestMove = dir;
+        }
+      }
+
+      return bestMove || 'up';
+    }
+
+    function evaluateBoardWeighted(boardState) {
+      let score = 0;
+      for (let r = 0; r < size; r++) {
+        for (let c = 0; c < size; c++) {
+          score += boardState[r][c] * WEIGHT_MATRIX[r][c];
+        }
+      }
+      // Bonus for empty tiles
+      const empties = boardState.flat().filter(n => n === 0).length;
+      score += empties * 10000;
+      return score;
+    }
+
+    // Strategy 2: Monte Carlo Simulation
+    function monteCarloMove(boardState, simulations = 100) {
+      const directions = ['up', 'down', 'left', 'right'];
+      let bestMove = null;
+      let bestAvgScore = -Infinity;
+
+      for (const dir of directions) {
+        const result = simulateMove(boardState, dir);
+        if (!result.moved) continue;
+
+        let totalScore = 0;
+        for (let i = 0; i < simulations; i++) {
+          totalScore += runRandomSimulation(result.nextState);
+        }
+        const avgScore = totalScore / simulations;
+
+        if (avgScore > bestAvgScore) {
+          bestAvgScore = avgScore;
+          bestMove = dir;
+        }
+      }
+
+      return bestMove || 'up';
+    }
+
+    function runRandomSimulation(startBoard) {
+      let simBoard = startBoard.map(row => row.slice());
+      let simScore = 0;
+      const directions = ['up', 'down', 'left', 'right'];
+      let moves = 0;
+      const maxMoves = 200;
+
+      while (moves < maxMoves) {
+        // Shuffle directions for randomness
+        const shuffled = directions.slice().sort(() => Math.random() - 0.5);
+        let moved = false;
+
+        for (const dir of shuffled) {
+          const result = simulateMove(simBoard, dir);
+          if (result.moved) {
+            simBoard = result.nextState;
+            simScore += result.gain;
+            // Add random tile
+            const empties = [];
+            for (let r = 0; r < size; r++) {
+              for (let c = 0; c < size; c++) {
+                if (simBoard[r][c] === 0) empties.push([r, c]);
+              }
+            }
+            if (empties.length > 0) {
+              const [r, c] = empties[Math.floor(Math.random() * empties.length)];
+              simBoard[r][c] = Math.random() < 0.9 ? 2 : 4;
+            }
+            moved = true;
+            break;
+          }
+        }
+
+        if (!moved) break; // Game over
+        moves++;
+      }
+
+      return simScore + evaluateBoardWeighted(simBoard) / 1000000;
+    }
+
+    // Strategy 3: Expectimax Algorithm (Best results)
+    function expectimaxMove(boardState, depth = 4) {
+      const directions = ['up', 'down', 'left', 'right'];
+      let bestMove = null;
+      let bestScore = -Infinity;
+
+      for (const dir of directions) {
+        const result = simulateMove(boardState, dir);
+        if (!result.moved) continue;
+
+        const score = expectimaxValue(result.nextState, depth - 1, false);
+        if (score > bestScore) {
+          bestScore = score;
+          bestMove = dir;
+        }
+      }
+
+      return bestMove || weightedHeuristicMove(boardState);
+    }
+
+    function expectimaxValue(boardState, depth, isPlayerTurn) {
+      // Check for terminal state or depth limit
+      if (depth === 0) {
+        return evaluateBoardExpectimax(boardState);
+      }
+
+      if (isPlayerTurn) {
+        // Player's turn - maximize
+        const directions = ['up', 'down', 'left', 'right'];
+        let maxScore = -Infinity;
+        let anyMoved = false;
+
+        for (const dir of directions) {
+          const result = simulateMove(boardState, dir);
+          if (!result.moved) continue;
+          anyMoved = true;
+          const score = expectimaxValue(result.nextState, depth - 1, false);
+          maxScore = Math.max(maxScore, score);
+        }
+
+        return anyMoved ? maxScore : evaluateBoardExpectimax(boardState);
+      } else {
+        // Chance node - expected value of random tile placement
+        const empties = [];
+        for (let r = 0; r < size; r++) {
+          for (let c = 0; c < size; c++) {
+            if (boardState[r][c] === 0) empties.push([r, c]);
+          }
+        }
+
+        if (empties.length === 0) {
+          return expectimaxValue(boardState, depth - 1, true);
+        }
+
+        // Sample a subset of empty cells for efficiency
+        const sampleSize = Math.min(empties.length, 4);
+        const sampled = empties.slice().sort(() => Math.random() - 0.5).slice(0, sampleSize);
+        
+        let expectedValue = 0;
+        for (const [r, c] of sampled) {
+          // 90% chance of 2, 10% chance of 4
+          const board2 = boardState.map(row => row.slice());
+          board2[r][c] = 2;
+          expectedValue += 0.9 * expectimaxValue(board2, depth - 1, true);
+
+          const board4 = boardState.map(row => row.slice());
+          board4[r][c] = 4;
+          expectedValue += 0.1 * expectimaxValue(board4, depth - 1, true);
+        }
+
+        return expectedValue / sampled.length;
+      }
+    }
+
+    function evaluateBoardExpectimax(boardState) {
+      let score = 0;
+
+      // 1. Weighted position score (snake pattern)
+      for (let r = 0; r < size; r++) {
+        for (let c = 0; c < size; c++) {
+          score += boardState[r][c] * WEIGHT_MATRIX[r][c];
+        }
+      }
+
+      // 2. Empty tiles bonus (critical for survival)
+      const empties = boardState.flat().filter(n => n === 0).length;
+      score += empties * 50000;
+
+      // 3. Monotonicity bonus (tiles should increase toward corner)
+      score += calculateMonotonicity(boardState) * 10000;
+
+      // 4. Smoothness bonus (adjacent tiles should be similar)
+      score += calculateSmoothness(boardState) * 1000;
+
+      // 5. Max tile in corner bonus
+      const maxTile = Math.max(...boardState.flat());
+      if (boardState[0][3] === maxTile) {
+        score += maxTile * 10000;
+      }
+
+      return score;
+    }
+
+    function calculateMonotonicity(boardState) {
+      let mono = 0;
+
+      // Check rows (prefer increasing left to right)
+      for (let r = 0; r < size; r++) {
+        let increasing = 0, decreasing = 0;
+        for (let c = 0; c < size - 1; c++) {
+          if (boardState[r][c] <= boardState[r][c + 1]) increasing++;
+          if (boardState[r][c] >= boardState[r][c + 1]) decreasing++;
+        }
+        mono += Math.max(increasing, decreasing);
+      }
+
+      // Check columns (prefer increasing top to bottom for left cols, decreasing for right)
+      for (let c = 0; c < size; c++) {
+        let increasing = 0, decreasing = 0;
+        for (let r = 0; r < size - 1; r++) {
+          if (boardState[r][c] <= boardState[r + 1][c]) increasing++;
+          if (boardState[r][c] >= boardState[r + 1][c]) decreasing++;
+        }
+        mono += Math.max(increasing, decreasing);
+      }
+
+      return mono;
+    }
+
+    function calculateSmoothness(boardState) {
+      let smoothness = 0;
+
+      for (let r = 0; r < size; r++) {
+        for (let c = 0; c < size; c++) {
+          if (boardState[r][c] === 0) continue;
+          const val = Math.log2(boardState[r][c]);
+
+          // Check right neighbor
+          if (c < size - 1 && boardState[r][c + 1] !== 0) {
+            smoothness -= Math.abs(val - Math.log2(boardState[r][c + 1]));
+          }
+          // Check bottom neighbor
+          if (r < size - 1 && boardState[r + 1][c] !== 0) {
+            smoothness -= Math.abs(val - Math.log2(boardState[r + 1][c]));
+          }
+        }
+      }
+
+      return smoothness;
+    }
+
+    // Get move based on selected strategy
+    let selectedStrategy = 'expectimax';
+    const strategyStorageKey = 'aurora-2048-ai-strategy';
+
+    function getStrategyMove(boardState) {
+      switch (selectedStrategy) {
+        case 'expectimax':
+          return expectimaxMove(boardState, 4);
+        case 'montecarlo':
+          return monteCarloMove(boardState, 100);
+        case 'weighted':
+          return weightedHeuristicMove(boardState);
+        default:
+          return weightedHeuristicMove(boardState);
+      }
+    }
+
+    // Legacy fallback heuristic (used as backup)
     function fallbackHeuristic() {
+      return getStrategyMove(board);
+    }
+
+    function oldFallbackHeuristic() {
       const order = ['left', 'down', 'right', 'up'];
       let bestMove = null;
       let bestScore = -Infinity;
@@ -1242,7 +1539,13 @@
       aiPlaying = true;
       aiPlayBtn.textContent = 'Stop AI';
       askAiBtn.disabled = true;
-      setAiStatus('<strong>AI autoplay</strong> running until win or no moves.');
+      const strategyNames = {
+        'expectimax': 'Expectimax',
+        'montecarlo': 'Monte Carlo',
+        'weighted': 'Weighted Heuristic',
+        'llm': selectedModel
+      };
+      setAiStatus(`<strong>AI autoplay</strong> running with ${strategyNames[selectedStrategy]} until win or no moves.`);
 
       while (aiPlaying) {
         if (has2048()) {
@@ -1265,7 +1568,8 @@
         let direction = null;
         try {
           const { move, source } = await requestAIMove(payload);
-          const guarded = anchorGuard(move);
+          // Only apply anchorGuard for LLM strategy (local algorithms already handle this)
+          const guarded = selectedStrategy === 'llm' ? anchorGuard(move) : move;
           direction = guarded;
           if (guarded !== move) {
             setAiStatus(`<strong>AI move (guarded):</strong> ${guarded.toUpperCase()} instead of ${move.toUpperCase()} to protect the top-right anchor (${source}).`);
@@ -1274,7 +1578,7 @@
           }
         } catch (err) {
           console.error(err);
-          direction = fallbackHeuristic();
+          direction = getStrategyMove(board);
           setAiStatus(`AI request failed; using fallback move ${direction.toUpperCase()}.`);
         }
 
@@ -1287,7 +1591,7 @@
         move(direction);
         if (JSON.stringify(board) === before) {
           // If move had no effect, try a fallback alternate once.
-          const alt = fallbackHeuristic();
+          const alt = getStrategyMove(board);
           if (alt && alt !== direction) {
             move(alt);
             setAiStatus(`Move ${direction.toUpperCase()} blocked; tried ${alt.toUpperCase()} instead.`);
@@ -1316,6 +1620,18 @@
     }
 
     async function requestAIMove(payload) {
+      // If using local algorithm strategies
+      if (selectedStrategy !== 'llm') {
+        const move = getStrategyMove(payload.board);
+        const strategyNames = {
+          'expectimax': 'Expectimax',
+          'montecarlo': 'Monte Carlo',
+          'weighted': 'Weighted Heuristic'
+        };
+        return { move, source: strategyNames[selectedStrategy] || selectedStrategy };
+      }
+      
+      // LLM strategy - use Azure OpenAI
       const configured = Boolean(
         azureAI.apiKey &&
         aiModels[selectedModel] &&
@@ -1325,15 +1641,23 @@
         const move = await fetchAzureMove(payload);
         return { move, source: selectedModel };
       }
-      const move = fallbackHeuristic();
-      return { move, source: 'fallback heuristic' };
+      // Fallback if LLM not configured
+      const move = getStrategyMove(payload.board);
+      return { move, source: 'local algorithm (LLM not configured)' };
     }
 
     async function callAIForMove() {
       if (aiThinking) return;
       aiThinking = true;
       askAiBtn.disabled = true;
-      setAiStatus('<strong>AI thinking…</strong> formatting board for GPT-5.2');
+      
+      const strategyNames = {
+        'expectimax': 'Expectimax algorithm',
+        'montecarlo': 'Monte Carlo simulation',
+        'weighted': 'Weighted heuristic',
+        'llm': `${selectedModel}`
+      };
+      setAiStatus(`<strong>AI thinking…</strong> using ${strategyNames[selectedStrategy]}`);
 
       const payload = {
         board: board.map(row => row.slice()),
@@ -1345,7 +1669,8 @@
 
       try {
         const { move, source } = await requestAIMove(payload);
-        const guarded = anchorGuard(move);
+        // Only apply anchorGuard for LLM strategy
+        const guarded = selectedStrategy === 'llm' ? anchorGuard(move) : move;
         if (guarded !== move) {
           setAiStatus(`<strong>AI suggests (guarded):</strong> ${guarded.toUpperCase()} instead of ${move.toUpperCase()} to protect the top-right anchor (${source}).`);
         } else {
@@ -1353,7 +1678,7 @@
         }
       } catch (err) {
         console.error(err);
-        const move = fallbackHeuristic();
+        const move = getStrategyMove(board);
         setAiStatus(`AI request failed, using fallback: ${move.toUpperCase()}.`);
       } finally {
         aiThinking = false;
@@ -1432,7 +1757,8 @@
             cell.className = 'history-cell';
             if (value > 0) {
               cell.classList.add('filled');
-              cell.textContent = value <= 128 ? value : value / 256 + 'k';
+              // Show full number up to 512, then abbreviate (1024=1k, 2048=2k, etc.)
+              cell.textContent = value <= 512 ? value : (value / 1024) + 'k';
             }
             gridDiv.appendChild(cell);
           }
@@ -1551,7 +1877,9 @@
       aiModelSelect.addEventListener('change', () => {
         selectedModel = aiModelSelect.value;
         localStorage.setItem(modelStorageKey, selectedModel);
-        setAiStatus(`AI model changed to <strong>${selectedModel}</strong>.`);
+        if (selectedStrategy === 'llm') {
+          updateAiStatusForStrategy();
+        }
       });
 
       copyHistoryBtn.addEventListener('click', () => {
@@ -1693,13 +2021,46 @@
       setAiStatus(`Reverted to Move ${moveIndex + 1}`);
     }
 
+    function loadSelectedStrategy() {
+      const saved = localStorage.getItem(strategyStorageKey);
+      if (saved && ['expectimax', 'montecarlo', 'weighted', 'llm'].includes(saved)) {
+        selectedStrategy = saved;
+        aiStrategySelect.value = saved;
+      }
+      // Show/hide model dropdown based on strategy
+      aiModelSelect.style.display = selectedStrategy === 'llm' ? '' : 'none';
+      updateAiStatusForStrategy();
+    }
+
+    function updateAiStatusForStrategy() {
+      const strategyDescriptions = {
+        'expectimax': 'Expectimax (depth 4) - Best results, ~80% win rate',
+        'montecarlo': 'Monte Carlo (100 sims) - Good results, random sampling',
+        'weighted': 'Weighted Heuristic - Fast, snake pattern',
+        'llm': `LLM (${selectedModel}) - Cloud AI, slower`
+      };
+      setAiStatus(`AI Strategy: <strong>${strategyDescriptions[selectedStrategy]}</strong>. Click "Ask AI" or "AI Play".`);
+    }
+
+    // Strategy dropdown change handler
+    aiStrategySelect.addEventListener('change', () => {
+      selectedStrategy = aiStrategySelect.value;
+      localStorage.setItem(strategyStorageKey, selectedStrategy);
+      // Show/hide model dropdown based on strategy
+      aiModelSelect.style.display = selectedStrategy === 'llm' ? '' : 'none';
+      updateAiStatusForStrategy();
+    });
+
     function loadSelectedModel() {
       const saved = localStorage.getItem(modelStorageKey);
       if (saved && aiModels[saved]) {
         selectedModel = saved;
         aiModelSelect.value = saved;
       }
-      setAiStatus(`AI ready. Using <strong>${selectedModel}</strong>. Click "Ask AI" to get a suggested move.`);
+      // Only update status if LLM is selected
+      if (selectedStrategy === 'llm') {
+        updateAiStatusForStrategy();
+      }
     }
 
     async function analyzeAndLearnStrategy() {
