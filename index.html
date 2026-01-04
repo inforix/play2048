@@ -625,7 +625,10 @@
     <section class="move-history">
       <div class="history-header">
         <span>Move History</span>
-        <button class="copy-history-btn" id="copy-history">📋 Copy</button>
+        <div style="display: flex; gap: 8px;">
+          <button class="copy-history-btn" id="copy-history">Copy</button>
+          <button class="copy-history-btn" id="download-history">Download</button>
+        </div>
       </div>
       <div class="history-list" id="history-list"></div>
     </section>
@@ -1877,6 +1880,59 @@
       copyHistoryBtn.addEventListener('click', () => {
         copyMoveHistory();
       });
+
+      const downloadHistoryBtn = document.getElementById('download-history');
+      downloadHistoryBtn.addEventListener('click', () => {
+        downloadMoveHistoryJSON();
+      });
+    }
+
+    function downloadMoveHistoryJSON() {
+      if (moveHistory.length === 0) {
+        alert('No moves to download yet!');
+        return;
+      }
+
+      // Create JSON data
+      const historyData = {
+        game: '2048 Aurora Edition',
+        totalMoves: moveHistory.length,
+        finalScore: score,
+        bestScore: best,
+        timestamp: new Date().toISOString(),
+        moves: moveHistory.map((entry, index) => ({
+          moveNumber: index + 1,
+          direction: entry.move,
+          boardState: entry.board
+        }))
+      };
+
+      // Convert to JSON string
+      const jsonString = JSON.stringify(historyData, null, 2);
+      
+      // Create blob and download
+      const blob = new Blob([jsonString], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `2048-history-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      // Visual feedback
+      const downloadHistoryBtn = document.getElementById('download-history');
+      const originalText = downloadHistoryBtn.textContent;
+      downloadHistoryBtn.textContent = '✓ Downloaded!';
+      downloadHistoryBtn.style.background = 'rgba(135, 246, 255, 0.2)';
+      downloadHistoryBtn.style.borderColor = 'rgba(135, 246, 255, 0.4)';
+      
+      setTimeout(() => {
+        downloadHistoryBtn.textContent = originalText;
+        downloadHistoryBtn.style.background = '';
+        downloadHistoryBtn.style.borderColor = '';
+      }, 2000);
     }
 
     function copyMoveHistory() {
