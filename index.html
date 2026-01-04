@@ -160,9 +160,37 @@
       letter-spacing: 0.5px;
       text-transform: uppercase;
       color: var(--accent);
-      text-align: center;
       padding-bottom: 8px;
       border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .copy-history-btn {
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      color: var(--text);
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      text-transform: none;
+      letter-spacing: 0.3px;
+    }
+
+    .copy-history-btn:hover {
+      background: rgba(255, 255, 255, 0.12);
+      border-color: rgba(135, 246, 255, 0.3);
+      color: var(--accent);
+      transform: translateY(-1px);
+    }
+
+    .copy-history-btn:active {
+      transform: translateY(0);
     }
 
     .history-list {
@@ -198,6 +226,34 @@
       letter-spacing: 0.3px;
       text-transform: uppercase;
       margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .copy-move-btn {
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      color: var(--muted);
+      padding: 3px 6px;
+      border-radius: 4px;
+      font-size: 12px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      opacity: 0.6;
+    }
+
+    .copy-move-btn:hover {
+      background: rgba(255, 255, 255, 0.1);
+      border-color: rgba(135, 246, 255, 0.3);
+      color: var(--accent);
+      opacity: 1;
+      transform: scale(1.1);
+    }
+
+    .copy-move-btn:active {
+      transform: scale(0.95);
     }
 
     .history-grid {
@@ -216,7 +272,7 @@
       justify-content: center;
       border-radius: 6px;
       background: rgba(255, 255, 255, 0.05);
-      font-size: 8px;
+      font-size: 10px;
       font-weight: 700;
       color: var(--text);
       border: 1px solid rgba(255, 255, 255, 0.06);
@@ -524,9 +580,15 @@
           <button class="ghost" id="undo">Undo</button>
           <button class="ghost" id="theme-toggle">Theme: Aurora</button>
           <button class="ghost" id="mute-toggle">Sound: On</button>
+          <select id="ai-model" class="ghost" style="padding: 8px 12px; background: transparent; color: var(--text); border: 1px solid var(--accent); border-radius: 8px; cursor: pointer; font-size: 14px;">
+            <option value="gpt-5.2">GPT-5.2</option>
+            <option value="gpt-5.2-chat">GPT-5.2-Chat</option>
+            <option value="DeepSeek-V3.2">DeepSeek-V3.2</option>
+          </select>
           <button class="ghost" id="ask-ai">Ask AI</button>
           <button class="ghost" id="ai-play">AI Play</button>
           <button class="ghost" id="learn-strategy">📚 Learn Strategy</button>
+          <button class="ghost" id="clear-strategy">🗑️ Clear Strategy</button>
           <button id="new-game">New Game</button>
         </div>
       </div>
@@ -548,10 +610,17 @@
 
       <div class="info" id="ai-status">AI ready. Click "Ask AI" to get a suggested move from GPT-5.2 (or the local heuristic fallback).</div>
       <div class="info" id="strategy-result" style="display: none; border-color: rgba(135, 246, 255, 0.3); background: rgba(135, 246, 255, 0.05);"></div>
+      <div class="info" id="learned-note-container" style="display: none;">
+        <label style="display: block; margin-bottom: 6px; font-weight: bold;">📝 Learned Strategy Prompt (sent to AI):</label>
+        <textarea id="learned-note" readonly rows="8" style="width: 100%; background: rgba(0,0,0,0.3); color: var(--text); border: 1px solid var(--accent); border-radius: 8px; padding: 10px; font-family: monospace; font-size: 12px; resize: vertical;"></textarea>
+      </div>
     </div>
 
     <section class="move-history">
-      <div class="history-header">Move History</div>
+      <div class="history-header">
+        <span>Move History</span>
+        <button class="copy-history-btn" id="copy-history">📋 Copy</button>
+      </div>
       <div class="history-list" id="history-list"></div>
     </section>
   </main>
@@ -570,6 +639,28 @@
     let aiThinking = false;
     let aiPlaying = false;
     let learnedStrategy = null;
+    let selectedModel = 'gpt-5.2';
+
+    const aiModels = {
+      'gpt-5.2': {
+        endpoint: 'https://maritimeai-resource.openai.azure.com',
+        deployment: 'gpt-5.2',
+        apiVersion: '2025-03-01-preview',
+        type: 'azure'
+      },
+      'gpt-5.2-chat': {
+        endpoint: 'https://maritimeai-resource.openai.azure.com',
+        deployment: 'gpt-5.2-chat',
+        apiVersion: '2025-03-01-preview',
+        type: 'azure'
+      },
+      'DeepSeek-V3.2': {
+        endpoint: 'https://maritimeai-resource.openai.azure.com',
+        deployment: 'DeepSeek-V3.2',
+        apiVersion: '2025-03-01-preview',
+        type: 'azure'
+      }
+    };
 
     const azureAI = {
       endpoint: 'https://maritimeai-resource.openai.azure.com',
@@ -578,6 +669,70 @@
       apiVersion: '2025-03-01-preview'
     };
     const apiKeyStorageKey = 'aurora-2048-azure-key';
+    const modelStorageKey = 'aurora-2048-ai-model';
+
+    const coreStrategyPrompt1 = `核心策略 - 按优先级应用这些经过验证的原则：
+
+1. 单调性（必要）：保持行和列在一个方向上单调递减。
+   - 右上锚定 + 蛇形分布。
+   - 顶行从右到左递减，右列从上到下递减。
+   - 禁止出现中间比角落更大的断层。
+
+2. 角落锚定（关键）：最大方块必须稳定在右上角。
+   - 任意移动如果会把最大方块从右上角拉走，直接否决。
+   - 修复角落通常成本很高，优先避免破坏。
+
+3. 平滑性（重要）：
+   - 尽量减少跳跃差值
+   - 相近数值保持邻近，支持自然合并。
+
+4. 合并机会（重要）：
+   - 只做“结构安全”的合并：
+     — 不破坏单调性
+     — 不推开角落
+     — 不拆散主链 (8→16→32→64→128)
+
+5. 自由空间（重要）：
+   - 目标保持 ≥ 4 空位
+   - 空间紧张时优先创造空间，而非得分
+
+6. 链式合并（关键）：
+   - 当移动可以创造连续合并路线时优先：
+     — 聚拢两个相同较大数
+     — 后续能接入更大的主链
+     — 前提是不破坏角落和顶行
+
+7. 纵向聚拢：
+   - 若 UP 可以把小块送入主链（顶行/右列）且不破坏结构，则优先。
+   - 用于把 2/4/8 纳入增长路径。
+
+8. 结构预防（新增）：
+   - 尽量避免整列或整行在非主链方向被完全填满。
+   - 始终在左侧或中部保留“支点”，以便需要时可以 UP 或 RIGHT 调整。
+
+9. 向下移动的有限例外（新增，非常重要）：
+   - 以下情形允许 DOWN，甚至优先：
+     — 右列已满，且最大块仍在右上角
+     — DOWN 不会移动最大块
+     — DOWN 可在右列形成合并或聚拢
+     — DOWN 可以在顶部创造新空间
+   - 如果 DOWN 只是单纯挤压，没有结构收益，则禁止。
+
+移动指南：
+- 第一优先：右（稳固顶行与角落）
+- 第二优先：上（延长主链、聚拢资源）
+- 左：仅在满足严格条件且可在 1–2 步内恢复结构时使用
+- 下：仅在“有限例外条件”满足时使用（见规则 9）
+
+决策过程：
+1. 是否会让最大方块离开右上角？（是 → 否决）
+2. 是否破坏顶行或右列的单调性？
+3. 是否带来结构性收益（链式合并 / 聚拢 / 创造空间）？
+4. 是否保持足够空白格？
+5. 两步之后是否仍然安全？
+6. 若考虑 DOWN：是否符合“有限例外条件”？`;
+
+    const coreStrategyPrompt = '这个游戏是通过移动方块来实现最终完成2048这个数字的组合。初始阶段，不断的使用向上，和向右的方向。按照1-16的方法来定义格子数，编号第一排按从左向右分别是1到4，第二排5-8，第三排9-12，第四排13-16。游戏过程中，始终保持右上角，即第4块格子的数字最大，尽量保证第3块格子第二大，第2块格子第三大，第1块格子第四大。在游戏过程中，如果遇到需要调整第四块格子的情况，那么保证移动最少的步数，并且如果第4格没有产生新的方块，需马上将调走的第4块方格调回去，如果调不回去，则尽量保持在偏右上的位置。玩到后期，如果遇到64,128这种数字在左下区域，则尽量调整其位置到右上方，便于合成更大的数字。';
 
     const gridEl = document.getElementById('grid');
     const scoreEl = document.getElementById('score');
@@ -596,6 +751,11 @@
     const historyListEl = document.getElementById('history-list');
     const strategyResultEl = document.getElementById('strategy-result');
     const learnStrategyBtn = document.getElementById('learn-strategy');
+    const clearStrategyBtn = document.getElementById('clear-strategy');
+    const learnedNoteContainer = document.getElementById('learned-note-container');
+    const learnedNoteEl = document.getElementById('learned-note');
+    const aiModelSelect = document.getElementById('ai-model');
+    const copyHistoryBtn = document.getElementById('copy-history');
     const cells = [];
     let moveHistory = [];
 
@@ -609,8 +769,11 @@
       muted = localStorage.getItem('aurora-2048-muted') === '1';
       updateToggles();
       loadApiKey();
+      loadSelectedModel();
       loadLearnedStrategy();
-      newGame();
+      if (!loadGameState()) {
+        newGame();
+      }
       setupInput();
     }
 
@@ -634,6 +797,7 @@
       addRandomTile();
       updateUI();
       renderMoveHistory();
+      saveGameState();
     }
 
     function addRandomTile() {
@@ -666,6 +830,7 @@
         updateUI();
         playSound(mergedDuringMove ? 'merge' : 'move');
         renderMoveHistory();
+        saveGameState();
         if (has2048()) showMessage('You reached 2048!', 'Keep going or start fresh.');
         if (isGameOver()) showMessage('No moves left', 'Try again and push the high score.');
       }
@@ -834,6 +999,7 @@
       }
       updateUI();
       renderMoveHistory();
+      saveGameState();
     }
 
     function ensureAudio() {
@@ -933,16 +1099,29 @@
       return simulateMove(board, dir).moved;
     }
 
+    function isRightColumnFull() {
+      return board.every(row => row[3] !== 0);
+    }
+
     function anchorGuard(direction) {
+      // If anchor is not at top-right, allow any move
       if (!anchorAtTopRight()) return direction;
-      const disallowed = direction === 'left' || direction === 'down';
-      if (!disallowed) return direction;
-      const alternatives = ['right', 'up', 'left', 'down'];
-      for (const alt of alternatives) {
-        if (alt === direction) continue;
-        if ((alt === 'left' || alt === 'down') && anchorAtTopRight()) continue;
-        if (moveIsPossible(alt)) return alt;
+      
+      // DOWN is only allowed when right column is completely full
+      // and DOWN won't move the max tile
+      if (direction === 'down') {
+        if (!isRightColumnFull()) {
+          // Right column not full - find alternative
+          const alternatives = ['up', 'left', 'right'];
+          for (const alt of alternatives) {
+            if (moveIsPossible(alt)) return alt;
+          }
+        }
+        // Right column is full - allow DOWN
+        return direction;
       }
+      
+      // UP, LEFT, RIGHT are generally safe when anchor is at top-right
       return direction;
     }
 
@@ -964,56 +1143,67 @@
     }
 
     async function fetchAzureMove(payload) {
-      const url = `${azureAI.endpoint}/openai/deployments/${azureAI.deployment}/chat/completions?api-version=${azureAI.apiVersion}`;
+      const model = aiModels[selectedModel];
+      const url = `${model.endpoint}/openai/deployments/${model.deployment}/chat/completions?api-version=${model.apiVersion}`;
       const learnedNote = getLearnedStrategyPrompt();
+      
+      // Check which moves are valid and what they do
+      const moves = ['up', 'right', 'left', 'down'];
+      const moveAnalysis = moves.map(dir => {
+        const sim = simulateMove(payload.board, dir);
+        return `${dir.toUpperCase()}: ${sim.moved ? '可行' : '不可行'}${sim.merged ? ', 有合并' : ''}`;
+      }).join('; ');
+      
+      // Check if max tile is at top-right
+      const maxVal = Math.max(...payload.board.flat());
+      const anchorStatus = payload.board[0][3] === maxVal ? 
+        `最大值${maxVal}在右上角(安全)` : 
+        `警告：最大值${maxVal}不在右上角`;
+      
+      // Check if right column is full
+      const rightColFull = payload.board.every(row => row[3] !== 0);
+      const rightColStatus = rightColFull ? '右列已满' : '右列未满';
+      
       const prompt = [
         'You play 2048 - a sliding puzzle game on a 4x4 grid.',
         'BOARD STATE (4 rows, 0=empty):',
         payload.prompt,
         '',
+        `移动分析: ${moveAnalysis}`,
+        `锚点状态: ${anchorStatus}`,
+        `右列状态: ${rightColStatus}`,
+        '',
         learnedNote ? 'PERSONALIZED STRATEGY:' : '',
         learnedNote,
         '',
-        'CORE STRATEGY - Apply these proven principles (by priority):',
+        coreStrategyPrompt1,
         '',
-        '1. MONOTONICITY (Essential): Keep rows and columns monotonically decreasing in one direction.',
-        '   - Organize tiles in a consistent pattern (e.g., top-left to bottom-right snake pattern).',
-        '   - Prevents orphaned tiles and maintains flexibility.',
+        '【核心决策规则 - 严格遵守！】',
         '',
-        '2. CORNER ANCHOR (Critical): Keep the LARGEST tile in the top-right corner.',
-        '   - Never move left or down if the max tile is in top-right (except forced moves).',
-        '   - Fill the top row with decreasing values from right to left.',
-        '   - This creates a "fortress" for large tiles.',
+        '★ DOWN的使用条件（必须同时满足所有条件才能用DOWN）：',
+        '  1. 右列(第4列)必须完全填满(无0)',
+        '  2. DOWN不会移动右上角的最大数字',
+        '  3. DOWN能产生合并',
+        '  → 如果以上任一条件不满足，禁止DOWN！',
         '',
-        '3. SMOOTHNESS (Important): Minimize value differences between adjacent tiles.',
-        '   - Align similar-valued tiles together.',
-        '   - This enables efficient merging along rows/columns.',
+        '★ 移动优先级：',
+        '  1. UP - 将方块向上聚拢，靠近顶行主链',
+        '  2. LEFT - 整理左侧，为右侧腾出空间（常用且安全）',
+        '  3. RIGHT - 稳固顶行和右列结构',
+        '  4. DOWN - 仅在满足上述严格条件时使用',
         '',
-        '4. MERGE OPPORTUNITIES (Important): Look for adjacent equal-valued tiles.',
-        '   - Prioritize moves that create cascading merges.',
-        '   - Merging tiles frees up space and increases score.',
+        '【示例1】[0,8,2,8][0,2,8,4][0,0,0,4][0,0,0,0]',
+        '→ 答案:UP (合并4→8，右列未满禁止DOWN)',
         '',
-        '5. FREE SPACE (Important): Maximize empty cells to maintain flexibility.',
-        '   - Avoid filling the board completely.',
-        '   - Empty spaces let you recover from bad positions.',
-        '',
-        'MOVE GUIDELINES:',
-        '- Prefer UP and RIGHT (moves toward the anchor corner).',
-        '- Use LEFT cautiously (only when it maintains monotonicity and anchor safety).',
-        '- AVOID DOWN (pulls anchor away from top-right corner; use only as last resort).',
-        '',
-        'DECISION PROCESS:',
-        '1. Check which moves preserve monotonicity.',
-        '2. Among valid moves, prefer those that move the largest tile toward top-right.',
-        '3. Choose the move that creates the most merge opportunities.',
-        '4. Evaluate which move leaves the most empty space.',
+        '【示例2】[4,2,8,32][0,0,2,8][0,0,0,2][0,0,0,0]',
+        '→ 答案:LEFT (整理左侧，右列未满禁止DOWN，UP/RIGHT效果差)',
         '',
         'REPLY FORMAT: Respond with exactly ONE word: up, down, left, or right'
       ].join('\n');
 
       const body = {
         messages: [
-          { role: 'system', content: 'You are an expert 2048 AI strategist. Analyze the board carefully and reply with ONLY ONE move word: up, left, right, or down. Consider the latest proven strategies.' },
+          { role: 'system', content: 'You are an expert 2048 AI strategist. CRITICAL: Never choose DOWN unless the right column (column 4) is COMPLETELY FULL with no zeros. Analyze the board and reply with ONLY ONE word: up, left, right, or down.' },
           { role: 'user', content: prompt }
         ],
         temperature: 0.1,
@@ -1128,14 +1318,12 @@
     async function requestAIMove(payload) {
       const configured = Boolean(
         azureAI.apiKey &&
-        azureAI.endpoint &&
-        azureAI.deployment &&
-        !azureAI.endpoint.includes('YOUR-') &&
-        !azureAI.deployment.includes('YOUR-')
+        aiModels[selectedModel] &&
+        !aiModels[selectedModel].endpoint.includes('YOUR-')
       );
       if (configured) {
         const move = await fetchAzureMove(payload);
-        return { move, source: 'GPT-5.2' };
+        return { move, source: selectedModel };
       }
       const move = fallbackHeuristic();
       return { move, source: 'fallback heuristic' };
@@ -1201,7 +1389,37 @@
         const moveLabel = document.createElement('div');
         moveLabel.className = 'history-move';
         const directions = { 'up': '↑', 'down': '↓', 'left': '←', 'right': '→' };
-        moveLabel.textContent = `Move ${index + 1}: ${directions[entry.move] || entry.move.toUpperCase()}`;
+        
+        const moveText = document.createElement('span');
+        moveText.textContent = `Move ${index + 1}: ${directions[entry.move] || entry.move.toUpperCase()}`;
+        moveLabel.appendChild(moveText);
+        
+        const btnContainer = document.createElement('div');
+        btnContainer.style.display = 'flex';
+        btnContainer.style.gap = '4px';
+        
+        const revertBtn = document.createElement('button');
+        revertBtn.className = 'revert-move-btn';
+        revertBtn.textContent = '↶';
+        revertBtn.title = 'Revert to this board state';
+        revertBtn.onclick = (e) => {
+          e.stopPropagation();
+          revertToBoardState(index);
+        };
+        btnContainer.appendChild(revertBtn);
+        
+        const copyBtn = document.createElement('button');
+        copyBtn.className = 'copy-move-btn';
+        copyBtn.textContent = '📋';
+        copyBtn.title = 'Copy this board state';
+        copyBtn.onclick = (e) => {
+          e.stopPropagation();
+          copyBoardState(entry.board, index + 1, entry.move);
+        };
+        btnContainer.appendChild(copyBtn);
+        
+        moveLabel.appendChild(btnContainer);
+        
         item.appendChild(moveLabel);
 
         const gridDiv = document.createElement('div');
@@ -1225,6 +1443,39 @@
       
       // Scroll to bottom to show latest move
       historyListEl.parentElement.scrollTop = historyListEl.parentElement.scrollHeight;
+    }
+
+    function saveGameState() {
+      const gameState = {
+        board: board.map(row => row.slice()),
+        score,
+        history,
+        moveHistory,
+        acceptInput
+      };
+      localStorage.setItem('aurora-2048-game-state', JSON.stringify(gameState));
+    }
+
+    function loadGameState() {
+      const saved = localStorage.getItem('aurora-2048-game-state');
+      if (!saved) return false;
+      
+      try {
+        const gameState = JSON.parse(saved);
+        board = gameState.board || Array.from({ length: size }, () => Array(size).fill(0));
+        score = gameState.score || 0;
+        history = gameState.history || [];
+        moveHistory = gameState.moveHistory || [];
+        acceptInput = gameState.acceptInput !== false;
+        
+        hideMessage();
+        updateUI();
+        renderMoveHistory();
+        return true;
+      } catch (err) {
+        console.error('Failed to load game state:', err);
+        return false;
+      }
     }
 
     function setupInput() {
@@ -1292,114 +1543,389 @@
       learnStrategyBtn.addEventListener('click', () => {
         analyzeAndLearnStrategy();
       });
+
+      clearStrategyBtn.addEventListener('click', () => {
+        clearLearnedStrategy();
+      });
+
+      aiModelSelect.addEventListener('change', () => {
+        selectedModel = aiModelSelect.value;
+        localStorage.setItem(modelStorageKey, selectedModel);
+        setAiStatus(`AI model changed to <strong>${selectedModel}</strong>.`);
+      });
+
+      copyHistoryBtn.addEventListener('click', () => {
+        copyMoveHistory();
+      });
     }
 
-    function analyzeAndLearnStrategy() {
+    function copyMoveHistory() {
+      if (moveHistory.length === 0) {
+        alert('No moves to copy yet!');
+        return;
+      }
+
+      // Format moves into a text block
+      let text = `2048 Game Move History (${moveHistory.length} moves, Score: ${score})\n\n`;
+      
+      moveHistory.forEach((entry, index) => {
+        const moveNum = index + 1;
+        const direction = entry.move.toUpperCase();
+        const boardStr = entry.board.map(row => 
+          row.map(v => (v === 0 ? '.' : String(v).padStart(4, ' '))).join(' ')
+        ).join('\n');
+        
+        text += `Move ${moveNum}: ${direction}\n${boardStr}\n\n`;
+      });
+
+      // Copy to clipboard
+      navigator.clipboard.writeText(text).then(() => {
+        // Visual feedback
+        const originalText = copyHistoryBtn.textContent;
+        copyHistoryBtn.textContent = '✓ Copied!';
+        copyHistoryBtn.style.background = 'rgba(135, 246, 255, 0.2)';
+        copyHistoryBtn.style.borderColor = 'rgba(135, 246, 255, 0.4)';
+        
+        setTimeout(() => {
+          copyHistoryBtn.textContent = originalText;
+          copyHistoryBtn.style.background = '';
+          copyHistoryBtn.style.borderColor = '';
+        }, 2000);
+      }).catch(err => {
+        console.error('Failed to copy:', err);
+        alert('Failed to copy to clipboard. Please try again.');
+      });
+    }
+
+    function copyBoardState(boardState, moveNum, direction) {
+      // Format single board state as text
+      const directionText = {
+        'up': '↑ Up',
+        'down': '↓ Down',
+        'left': '← Left',
+        'right': '→ Right'
+      }[direction] || direction;
+      
+      let text = `Move ${moveNum}: ${directionText}\n\n`;
+      
+      boardState.forEach(row => {
+        text += row.map(cell => {
+          const value = cell || 0;
+          return String(value).padStart(4, ' ');
+        }).join(' ') + '\n';
+      });
+
+      // Copy to clipboard
+      navigator.clipboard.writeText(text).then(() => {
+        // Find the button that was clicked and give visual feedback
+        const buttons = document.querySelectorAll('.copy-move-btn');
+        buttons.forEach(btn => {
+          if (btn.getAttribute('data-move-num') == moveNum) {
+            const originalText = btn.textContent;
+            btn.textContent = '✓';
+            btn.style.background = 'rgba(135, 246, 255, 0.2)';
+            btn.style.borderColor = 'rgba(135, 246, 255, 0.4)';
+            
+            setTimeout(() => {
+              btn.textContent = originalText;
+              btn.style.background = '';
+              btn.style.borderColor = '';
+            }, 1000);
+          }
+        });
+      }).catch(err => {
+        console.error('Failed to copy:', err);
+        alert('Failed to copy to clipboard.');
+      });
+    }
+
+    function revertToBoardState(moveIndex) {
+      if (moveIndex < 0 || moveIndex >= moveHistory.length) return;
+      
+      // Confirm the revert action
+      const movesRemoved = moveHistory.length - moveIndex - 1;
+      if (movesRemoved > 0) {
+        const confirmMsg = `This will revert to Move ${moveIndex + 1} and remove ${movesRemoved} move${movesRemoved > 1 ? 's' : ''} after it. Continue?`;
+        if (!confirm(confirmMsg)) return;
+      }
+      
+      // Restore the board state
+      const targetState = moveHistory[moveIndex];
+      board = targetState.board.map(row => row.slice());
+      
+      // Recalculate score based on board state
+      score = 0;
+      for (let r = 0; r < size; r++) {
+        for (let c = 0; c < size; c++) {
+          if (board[r][c] > 0) {
+            score += board[r][c];
+          }
+        }
+      }
+      
+      // Truncate move history and undo history
+      moveHistory = moveHistory.slice(0, moveIndex + 1);
+      history = [board.map(row => row.slice())];
+      
+      // Update UI
+      updateUI();
+      renderMoveHistory();
+      saveGameState();
+      
+      // Visual feedback on button
+      const buttons = document.querySelectorAll('.revert-move-btn');
+      buttons.forEach(btn => {
+        if (btn.closest('.history-item') === document.querySelectorAll('.history-item')[moveIndex]) {
+          const originalText = btn.textContent;
+          btn.textContent = '✓';
+          btn.style.background = 'rgba(135, 246, 255, 0.2)';
+          btn.style.borderColor = 'rgba(135, 246, 255, 0.4)';
+          
+          setTimeout(() => {
+            btn.textContent = originalText;
+            btn.style.background = '';
+            btn.style.borderColor = '';
+          }, 1000);
+        }
+      });
+      
+      // Show feedback
+      setAiStatus(`Reverted to Move ${moveIndex + 1}`);
+    }
+
+    function loadSelectedModel() {
+      const saved = localStorage.getItem(modelStorageKey);
+      if (saved && aiModels[saved]) {
+        selectedModel = saved;
+        aiModelSelect.value = saved;
+      }
+      setAiStatus(`AI ready. Using <strong>${selectedModel}</strong>. Click "Ask AI" to get a suggested move.`);
+    }
+
+    async function analyzeAndLearnStrategy() {
       if (moveHistory.length < 2) {
         strategyResultEl.style.display = 'none';
         alert('Need at least 2 moves to analyze strategy. Play more!');
         return;
       }
 
-      // Analyze move frequency
-      const moveFreq = { up: 0, down: 0, left: 0, right: 0 };
-      const moveSequences = [];
-      
-      moveHistory.forEach(entry => {
-        moveFreq[entry.move]++;
-        moveSequences.push(entry.move);
-      });
+      // Check if Azure AI is configured
+      const configured = Boolean(
+        azureAI.apiKey &&
+        aiModels[selectedModel] &&
+        !aiModels[selectedModel].endpoint.includes('YOUR-')
+      );
 
+      if (!configured) {
+        alert('Please configure Azure OpenAI API key first. AI is needed to analyze your strategy.');
+        return;
+      }
+
+      // Show loading state
+      learnStrategyBtn.disabled = true;
+      learnStrategyBtn.textContent = '🔄 AI Analyzing...';
+      strategyResultEl.innerHTML = `<strong>🤖 ${selectedModel} is analyzing your gameplay...</strong>`;
+      strategyResultEl.style.display = 'block';
+
+      // Prepare detailed move history with board states for AI analysis
       const totalMoves = moveHistory.length;
-      const movePercent = {};
-      Object.keys(moveFreq).forEach(dir => {
-        movePercent[dir] = ((moveFreq[dir] / totalMoves) * 100).toFixed(1);
-      });
+      
+      // Build detailed game log showing board state transitions
+      const gameLog = moveHistory.map((entry, index) => {
+        const boardStr = entry.board.map(row => row.map(v => v === 0 ? '.' : v).join('\t')).join('\n');
+        return `Move ${index + 1}: ${entry.move.toUpperCase()}\nBoard after:\n${boardStr}`;
+      }).join('\n\n');
 
-      // Identify preferred direction (most used)
-      const preferred = Object.keys(moveFreq).reduce((a, b) => moveFreq[a] > moveFreq[b] ? a : b);
-      const avoided = Object.keys(moveFreq).reduce((a, b) => moveFreq[a] < moveFreq[b] ? a : b);
+      const prompt = `You are an expert 2048 strategy coach. Analyze this player's gameplay and learn their decision-making patterns to teach an AI how to play in their style.
 
-      // Analyze patterns - look for sequences
-      let upRightCount = 0;
-      for (let i = 0; i < moveSequences.length - 1; i++) {
-        if ((moveSequences[i] === 'up' && moveSequences[i + 1] === 'right') ||
-            (moveSequences[i] === 'right' && moveSequences[i + 1] === 'up')) {
-          upRightCount++;
+GAME LOG (${totalMoves} moves, final score: ${score}):
+${gameLog}
+
+Based on this gameplay, create a STRATEGIC GUIDE that describes HOW TO MAKE DECISIONS in different game situations. Focus on:
+1. When to use each direction based on board state
+2. How to handle the largest tile positioning
+3. Merge priority decisions
+4. Emergency/recovery situations
+
+Respond in EXACTLY this JSON format (no other text):
+{
+  "style": "A short name for their play style",
+  "rules": [
+    "Rule 1: When [situation], move [direction] because [reason]",
+    "Rule 2: When [situation], move [direction] because [reason]",
+    "Rule 3: ...",
+    "Rule 4: ...",
+    "Rule 5: ..."
+  ],
+  "cornerStrategy": "Which corner they anchor to and how they maintain it",
+  "mergeStrategy": "How they prioritize merges (chain merges vs immediate merges)",
+  "emergencyMoves": "What they do when the board is filling up or in danger",
+  "avoidPatterns": "Moves or situations they avoid and why",
+  "summary": "A 2-3 sentence summary of how to play like this player"
+}`;
+
+      try {
+        const model = aiModels[selectedModel];
+        const url = `${model.endpoint}/openai/deployments/${model.deployment}/chat/completions?api-version=${model.apiVersion}`;
+        const body = {
+          messages: [
+            { role: 'system', content: 'You are an expert 2048 strategy analyst. Respond only with valid JSON.' },
+            { role: 'user', content: prompt }
+          ],
+          temperature: 0.3,
+        };
+
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'api-key': azureAI.apiKey
+          },
+          body: JSON.stringify(body)
+        });
+
+        if (!res.ok) {
+          throw new Error(`${selectedModel} error: ${res.status}`);
         }
+
+        const data = await res.json();
+        const content = data.choices?.[0]?.message?.content?.trim() || '';
+        
+        // Parse AI response
+        const jsonMatch = content.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) {
+          throw new Error('Invalid AI response format');
+        }
+
+        const aiAnalysis = JSON.parse(jsonMatch[0]);
+
+        // Store learned strategy with AI analysis
+        learnedStrategy = {
+          style: aiAnalysis.style || 'Unknown',
+          rules: aiAnalysis.rules || [],
+          cornerStrategy: aiAnalysis.cornerStrategy || '',
+          mergeStrategy: aiAnalysis.mergeStrategy || '',
+          emergencyMoves: aiAnalysis.emergencyMoves || '',
+          avoidPatterns: aiAnalysis.avoidPatterns || '',
+          summary: aiAnalysis.summary || '',
+          totalMoves,
+          finalScore: score,
+          analyzedByAI: true
+        };
+
+        // Save to localStorage
+        localStorage.setItem('aurora-2048-learned-strategy', JSON.stringify(learnedStrategy));
+
+        // Display results
+        displayStrategyAnalysis();
+
+      } catch (err) {
+        console.error('AI analysis error:', err);
+        strategyResultEl.innerHTML = `<strong>❌ AI Analysis Failed:</strong> ${err.message}. Please try again.`;
+      } finally {
+        learnStrategyBtn.disabled = false;
+        learnStrategyBtn.textContent = '📚 Learn Strategy';
       }
-
-      // Determine style
-      let style = 'Balanced';
-      if (movePercent.up > 35 && movePercent.right > 30) {
-        style = 'Corner Anchor (top-right focused)';
-      } else if (movePercent.left > 35) {
-        style = 'Left-heavy (column stacking)';
-      } else if (movePercent.down < 5 && movePercent.up > 30) {
-        style = 'Cautious (avoids down moves)';
-      }
-
-      // Calculate final score/moves correlation
-      const avgScorePerMove = score > 0 ? (score / totalMoves).toFixed(2) : 0;
-
-      // Store learned strategy
-      learnedStrategy = {
-        moveFreq,
-        movePercent,
-        preferred,
-        avoided,
-        style,
-        avgScorePerMove,
-        totalMoves,
-        finalScore: score
-      };
-
-      // Save to localStorage
-      localStorage.setItem('aurora-2048-learned-strategy', JSON.stringify(learnedStrategy));
-
-      // Display results
-      displayStrategyAnalysis();
     }
 
     function displayStrategyAnalysis() {
       if (!learnedStrategy) return;
 
-      const { movePercent, preferred, avoided, style, avgScorePerMove, totalMoves, finalScore } = learnedStrategy;
-      const dirs = { up: '↑', down: '↓', left: '←', right: '→' };
+      const { style, rules, cornerStrategy, mergeStrategy, summary, totalMoves, finalScore, analyzedByAI } = learnedStrategy;
 
+      const aiTag = analyzedByAI ? '🤖 AI-Analyzed' : '📊 Basic';
+      const rulesHtml = rules && rules.length > 0 
+        ? `<strong>Decision Rules:</strong><br>${rules.map(r => `• ${r}`).join('<br>')}<br>` 
+        : '';
+      
       const html = `
-        <strong>📊 Your Strategy Profile (${totalMoves} moves, Score: ${finalScore})</strong><br>
+        <strong>${aiTag} Strategy Profile (${totalMoves} moves, Score: ${finalScore})</strong><br>
         <small style="color: var(--accent);">
           <strong>Style:</strong> ${style}<br>
-          <strong>Move Distribution:</strong> ↑ ${movePercent.up}% | → ${movePercent.right}% | ← ${movePercent.left}% | ↓ ${movePercent.down}%<br>
-          <strong>Preferred:</strong> ${dirs[preferred]} (${movePercent[preferred]}%) | <strong>Avoided:</strong> ${dirs[avoided]} (${movePercent[avoided]}%)<br>
-          <strong>Avg Score/Move:</strong> ${avgScorePerMove} points/move<br>
-          <em>✓ AI will now learn from your strategy!</em>
+          ${cornerStrategy ? `<strong>Corner Strategy:</strong> ${cornerStrategy}<br>` : ''}
+          ${mergeStrategy ? `<strong>Merge Strategy:</strong> ${mergeStrategy}<br>` : ''}
+          ${rulesHtml}
+          ${summary ? `<strong>Summary:</strong> ${summary}<br>` : ''}
+          <em>✓ AI will now play using your learned strategy!</em>
         </small>
       `;
 
       strategyResultEl.innerHTML = html;
       strategyResultEl.style.display = 'block';
+      
+      // Update learned note textbox
+      updateLearnedNoteDisplay();
+    }
+
+    function updateLearnedNoteDisplay() {
+      const note = getLearnedStrategyPrompt();
+      if (note) {
+        learnedNoteEl.value = note;
+        learnedNoteContainer.style.display = 'block';
+      } else {
+        learnedNoteEl.value = '';
+        learnedNoteContainer.style.display = 'none';
+      }
+    }
+
+    function clearLearnedStrategy() {
+      learnedStrategy = null;
+      localStorage.removeItem('aurora-2048-learned-strategy');
+      strategyResultEl.style.display = 'none';
+      strategyResultEl.innerHTML = '';
+      learnedNoteContainer.style.display = 'none';
+      learnedNoteEl.value = '';
+      setAiStatus('Learned strategy cleared. AI will use default strategy.');
     }
 
     function getLearnedStrategyPrompt() {
       if (!learnedStrategy) return '';
 
-      const { movePercent, preferred, avoided, style } = learnedStrategy;
-      return `
-LEARNED FROM YOUR GAMEPLAY:
-- Your style: ${style}
-- You prefer moving ${preferred.toUpperCase()} (${movePercent[preferred]}% of moves)
-- You rarely move ${avoided.toUpperCase()} (${movePercent[avoided]}%)
-- UP: ${movePercent.up}%, RIGHT: ${movePercent.right}%, LEFT: ${movePercent.left}%, DOWN: ${movePercent.down}%
+      const { style, rules, cornerStrategy, mergeStrategy, emergencyMoves, avoidPatterns, summary } = learnedStrategy;
+      
+      let prompt = `
+LEARNED STRATEGY FROM PLAYER'S GAMEPLAY:
+Style: ${style}
 
-Please suggest moves similar to this style while keeping proven 2048 strategies in mind.`;
+DECISION RULES - Follow these when choosing moves:`;
+
+      if (rules && rules.length > 0) {
+        rules.forEach((rule, i) => {
+          prompt += `\n${i + 1}. ${rule}`;
+        });
+      }
+
+      if (cornerStrategy) {
+        prompt += `\n\nCORNER STRATEGY:\n${cornerStrategy}`;
+      }
+      
+      if (mergeStrategy) {
+        prompt += `\n\nMERGE STRATEGY:\n${mergeStrategy}`;
+      }
+
+      if (emergencyMoves) {
+        prompt += `\n\nEMERGENCY MOVES (when board is filling up):\n${emergencyMoves}`;
+      }
+
+      if (avoidPatterns) {
+        prompt += `\n\nAVOID THESE PATTERNS:\n${avoidPatterns}`;
+      }
+
+      if (summary) {
+        prompt += `\n\nOVERALL APPROACH:\n${summary}`;
+      }
+
+      prompt += `\n\nIMPORTANT: Apply these learned rules to decide the best move for the current board state.`;
+      
+      return prompt;
     }
 
     function loadLearnedStrategy() {
       const saved = localStorage.getItem('aurora-2048-learned-strategy');
       if (saved) {
         learnedStrategy = JSON.parse(saved);
+        // Display saved strategy on load
+        displayStrategyAnalysis();
       }
     }
 
