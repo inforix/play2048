@@ -839,7 +839,7 @@
         playSound(mergedDuringMove ? 'merge' : 'move');
         renderMoveHistory();
         saveGameState();
-        if (has2048()) showMessage('You reached 2048!', 'Keep going or start fresh.');
+        // if (has2048()) showMessage('You reached 2048!', 'Keep going or start fresh.');
         if (isGameOver()) showMessage('No moves left', 'Try again and push the high score.');
       }
     }
@@ -1545,13 +1545,9 @@
         'weighted': 'Weighted Heuristic',
         'llm': selectedModel
       };
-      setAiStatus(`<strong>AI autoplay</strong> running with ${strategyNames[selectedStrategy]} until win or no moves.`);
+      setAiStatus(`<strong>AI autoplay</strong> running with ${strategyNames[selectedStrategy]} until no moves left.`);
 
       while (aiPlaying) {
-        if (has2048()) {
-          setAiStatus('AI reached 2048. Stopping autoplay.');
-          break;
-        }
         if (isGameOver()) {
           setAiStatus('No moves left. AI autoplay stopped.');
           break;
@@ -1602,10 +1598,6 @@
         }
 
         if (!aiPlaying) break;
-        if (has2048()) {
-          setAiStatus('AI reached 2048. Stopping autoplay.');
-          break;
-        }
         if (isGameOver()) {
           setAiStatus('No moves left. AI autoplay stopped.');
           break;
