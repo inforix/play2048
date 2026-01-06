@@ -1,0 +1,233 @@
+{
+  "args": {
+    "games": 200,
+    "seed": 123,
+    "agent": "expectimax",
+    "all": true,
+    "json": true
+  },
+  "elapsedMs": 15891076,
+  "outputs": {
+    "random": {
+      "games": 200,
+      "winRate2048": 0,
+      "avgScore": 1112.74,
+      "avgSteps": 119.64,
+      "maxTileDist": [
+        {
+          "tile": 32,
+          "count": 9,
+          "pct": 0.045
+        },
+        {
+          "tile": 64,
+          "count": 80,
+          "pct": 0.4
+        },
+        {
+          "tile": 128,
+          "count": 97,
+          "pct": 0.485
+        },
+        {
+          "tile": 256,
+          "count": 14,
+          "pct": 0.07
+        }
+      ]
+    },
+    "greedy_eval": {
+      "games": 200,
+      "winRate2048": 0,
+      "avgScore": 4352.08,
+      "avgSteps": 326.285,
+      "maxTileDist": [
+        {
+          "tile": 64,
+          "count": 5,
+          "pct": 0.025
+        },
+        {
+          "tile": 128,
+          "count": 41,
+          "pct": 0.205
+        },
+        {
+          "tile": 256,
+          "count": 92,
+          "pct": 0.46
+        },
+        {
+          "tile": 512,
+          "count": 52,
+          "pct": 0.26
+        },
+        {
+          "tile": 1024,
+          "count": 10,
+          "pct": 0.05
+        }
+      ]
+    },
+    "expectimax": {
+      "games": 200,
+      "winRate2048": 0.49,
+      "avgScore": 23205.92,
+      "avgSteps": 1234.315,
+      "maxTileDist": [
+        {
+          "tile": 256,
+          "count": 19,
+          "pct": 0.095
+        },
+        {
+          "tile": 512,
+          "count": 28,
+          "pct": 0.14
+        },
+        {
+          "tile": 1024,
+          "count": 55,
+          "pct": 0.275
+        },
+        {
+          "tile": 2048,
+          "count": 84,
+          "pct": 0.42
+        },
+        {
+          "tile": 4096,
+          "count": 14,
+          "pct": 0.07
+        }
+      ]
+    },
+    "montecarlo": {
+      "games": 200,
+      "winRate2048": 0,
+      "avgScore": 1995.88,
+      "avgSteps": 183.01,
+      "maxTileDist": [
+        {
+          "tile": 64,
+          "count": 23,
+          "pct": 0.115
+        },
+        {
+          "tile": 128,
+          "count": 102,
+          "pct": 0.51
+        },
+        {
+          "tile": 256,
+          "count": 73,
+          "pct": 0.365
+        },
+        {
+          "tile": 512,
+          "count": 2,
+          "pct": 0.01
+        }
+      ]
+    },
+    "llm_naive": {
+      "games": 200,
+      "winRate2048": 0,
+      "avgScore": 2195.98,
+      "avgSteps": 200.835,
+      "maxTileDist": [
+        {
+          "tile": 32,
+          "count": 5,
+          "pct": 0.025
+        },
+        {
+          "tile": 64,
+          "count": 24,
+          "pct": 0.12
+        },
+        {
+          "tile": 128,
+          "count": 80,
+          "pct": 0.4
+        },
+        {
+          "tile": 256,
+          "count": 90,
+          "pct": 0.45
+        },
+        {
+          "tile": 512,
+          "count": 1,
+          "pct": 0.005
+        }
+      ]
+    },
+    "llm_guarded": {
+      "games": 200,
+      "winRate2048": 0,
+      "avgScore": 2195.98,
+      "avgSteps": 200.835,
+      "maxTileDist": [
+        {
+          "tile": 32,
+          "count": 5,
+          "pct": 0.025
+        },
+        {
+          "tile": 64,
+          "count": 24,
+          "pct": 0.12
+        },
+        {
+          "tile": 128,
+          "count": 80,
+          "pct": 0.4
+        },
+        {
+          "tile": 256,
+          "count": 90,
+          "pct": 0.45
+        },
+        {
+          "tile": 512,
+          "count": 1,
+          "pct": 0.005
+        }
+      ]
+    },
+    "llm_rerank": {
+      "games": 200,
+      "winRate2048": 0,
+      "avgScore": 4352.08,
+      "avgSteps": 326.285,
+      "maxTileDist": [
+        {
+          "tile": 64,
+          "count": 5,
+          "pct": 0.025
+        },
+        {
+          "tile": 128,
+          "count": 41,
+          "pct": 0.205
+        },
+        {
+          "tile": 256,
+          "count": 92,
+          "pct": 0.46
+        },
+        {
+          "tile": 512,
+          "count": 52,
+          "pct": 0.26
+        },
+        {
+          "tile": 1024,
+          "count": 10,
+          "pct": 0.05
+        }
+      ]
+    }
+  }
+}

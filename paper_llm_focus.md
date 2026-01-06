@@ -40,36 +40,10 @@ The retrieved rule set is injected into the LLM prompt as a compact policy prior
 ### 3.5 Strategy S4: LLM as parameter tuner (optional)
 An additional approach is to let the LLM tune coefficients in $E(B)$ (e.g., empty-cell weight vs monotonicity weight) based on observed failures, while the action selection remains deterministic. This improves stability and keeps runtime predictable.
 
-### 3.6 Strategy S5: GPT-5.2 Skills Enhancement
-The latest GPT-5.2 model introduces advanced capabilities that can significantly improve LLM-based 2048 performance beyond basic prompting. When using Azure OpenAI, we leverage two key skills:
+### 3.6 Optional: Tool-augmented LLM decisions (future work)
+In principle, an LLM controller can be improved by giving it *validated* game-state queries (e.g., enumerating legal actions and their immediate outcomes) and by requiring a structured response schema. This reduces parsing ambiguity and encourages explicit comparisons between candidate moves.
 
-**Function Calling**: We expose three game-specific functions that GPT-5.2 can invoke:
-- `evaluate_board(B)`: Returns composite heuristic score
-- `simulate_moves(B)`: Returns outcomes for all four directions
-- `check_anchor_safety(B, a)`: Verifies corner protection constraint
-
-This allows GPT-5.2 to query validated game state information before making decisions, combining LLM reasoning with deterministic board evaluation.
-
-**Structured Outputs**: By defining a JSON schema for move decisions, we ensure reliable parsing and gain access to rich analytical data:
-$$
-\text{Response} = \{reasoning, board\_analysis, move\_evaluations, recommended\_move, confidence\}
-$$
-
-**Hybrid Architecture**: The skills-enhanced agent combines:
-1. GPT-5.2's natural language reasoning for strategic analysis
-2. Function calls for validated board evaluation
-3. Structured outputs for transparent reasoning
-4. Anchor guard post-processing for safety
-
-**Note on Azure OpenAI**: Azure OpenAI does not support code_interpreter (Python execution) which is available in OpenAI's API. However, function calling and structured outputs provide significant improvements through validated game state queries and reliable response parsing.
-
-**Performance Characteristics**:
-- Latency: 2-4 seconds per move (vs 1-2s basic prompts)
-- Cost: ~\$0.015 per move (vs \$0.005 basic) - lower than originally estimated
-- Expected win rate: 55-70% (vs 40-50% basic LLM)
-- Decision quality: Improved through function-validated board analysis
-
-**Adaptive Enablement**: Skills can be toggled off for faster (but less optimal) gameplay, allowing users to balance performance vs cost/latency based on game difficulty.
+In this repository, the offline benchmark evaluates proxy LLM policies and deterministic hybrid policies. A full tool-augmented LLM evaluation (with real API calls, latency/cost reporting, and controlled decoding) is left as future work.
 
 ## 4. Experimental Setup
 
@@ -82,7 +56,6 @@ We evaluate each agent over $N$ self-play games with fixed random seeds. Each ga
 - **Prompt-only proxy:** `llm_naive`
 - **Constraint-only:** `llm_guarded` (prompt proxy + Anchor Guard)
 - **Hybrid reranking:** `llm_rerank` (prompt proxy + Anchor Guard + local evaluation)
-- **Skills-enhanced:** `llm_skills` (GPT-5.2 + Code Interpreter + Function Calling + Structured Outputs)
 - **Strong non-LLM baselines:** `expectimax`, `montecarlo`, `greedy_eval`
 
 ### 4.3 Reproducibility
@@ -92,20 +65,19 @@ All results in this manuscript should be generated with:
 node bench/bench2048.js --all --games N --seed S --json > bench/results.json
 ```
 
-## 5. Results (Fill from Benchmarks)
+## 5. Results
 
 ### 5.1 Overall performance
-Create a table from `bench/results.json`:
+We report results from 200 self-play games per agent (seed = 123). Values are taken from `bench/results.json`.
 
 | Agent | Win@2048 | Avg score | Avg steps | Notes |
 |---|---:|---:|---:|---|
-| llm_naive | (fill) | (fill) | (fill) | Basic prompts only |
-| llm_guarded | (fill) | (fill) | (fill) | + Anchor Guard |
-| llm_rerank | (fill) | (fill) | (fill) | + Local evaluation |
-| llm_skills | (fill) | (fill) | (fill) | + GPT-5.2 Skills (Code/Functions/Structured) |
-| greedy_eval | (fill) | (fill) | (fill) | 1-ply heuristic |
-| montecarlo | (fill) | (fill) | (fill) | 100 simulations |
-| expectimax | (fill) | (fill) | (fill) | 4-ply depth-limited |
+| llm_naive | 0.0% | 2196.0 | 200.8 | Prompt-preference proxy (right/up/left/down) |
+| llm_guarded | 0.0% | 2196.0 | 200.8 | + Anchor Guard (no change observed in this run) |
+| llm_rerank | 0.0% | 4352.1 | 326.3 | + Local evaluation reranking |
+| greedy_eval | 0.0% | 4352.1 | 326.3 | 1-ply heuristic (matches llm_rerank in this harness) |
+| montecarlo | 0.0% | 1995.9 | 183.0 | 100 rollouts |
+| expectimax | 49.0% | 23205.9 | 1234.3 | 4-ply expectimax |
 
 ### 5.2 Effect of constraints and hybridization
 Report relative improvements:
@@ -115,48 +87,28 @@ $$
 \Delta_{\text{guard}} = \text{WinRate}(\texttt{llm_guarded}) - \text{WinRate}(\texttt{llm_naive}).
 $$
 
+In this run, $\Delta_{\text{guard}}=0.0$ percentage points. This indicates that, under the tested seed and the prompt-preference proxy policy, the guard did not alter the chosen action sequence.
+
 - Reranking gain over guard:
 $$
 \Delta_{\text{rerank}} = \text{WinRate}(\texttt{llm_rerank}) - \text{WinRate}(\texttt{llm_guarded}).
 $$
 
-- Skills enhancement gain:
-$$
-\Delta_{\text{skills}} = \text{WinRate}(\texttt{llm_skills}) - \text{WinRate}(\texttt{llm_rerank}).
-$$
-
-**Ablation Study** (Skills Components):
-Measure contribution of each GPT-5.2 skill independently:
-- Skills (Code only): Code Interpreter enabled, no functions
-- Skills (Functions only): Function calling enabled, no code
-- Skills (Structured only): Structured outputs enabled, basic prompts
-- Skills (Full): All three capabilities combined
-
-Expected result: Full skills configuration achieves highest win rate, demonstrating synergistic benefits.
+In this run, $\Delta_{\text{rerank}}=0.0$ percentage points in Win@2048, but average score increased by +2156.1 (+98.2%) relative to \texttt{llm_guarded}.
 
 ### 5.3 Max-tile distribution
 Plot or tabulate the probability of reaching $\{512, 1024, 2048, 4096\}$.
+
+From the same 200-game run:
+- \texttt{llm_naive}: $P(\text{max}=512)=0.5\%$, $P(\text{max}\ge 1024)=0.0\%$.
+- \texttt{llm_rerank}: $P(\text{max}=1024)=5.0\%$, $P(\text{max}\ge 2048)=0.0\%$.
+- \texttt{expectimax}: $P(\text{max}\ge 2048)=49.0\%$ (2048: 42.0%, 4096: 7.0%).
 
 ## 6. Discussion (LLM win-rate mechanisms)
 - **Hard constraints** prevent rare but catastrophic errors, often producing a disproportionate increase in Win@2048.
 - **Hybrid reranking** reduces myopic merges and better preserves empty space and monotonic gradients.
 - **Retrieval prompts** help the LLM learn *when exceptions apply* (e.g., when \texttt{down} is safe) without relying on general knowledge.
-- **GPT-5.2 Skills** (Code Interpreter + Function Calling + Structured Outputs) bridge the gap between LLM reasoning and deterministic game-tree search:
-  - Code execution provides precise numerical analysis comparable to local algorithms
-  - Function calling ensures validated board evaluations with cached heuristics
-  - Structured outputs enable transparent decision-making with confidence scores
-  - Combined approach achieves win rates competitive with Expectimax while maintaining LLM's adaptability to learned strategies
-
-**Cost-Performance Tradeoff**:
-- Skills increase per-move cost by ~7× (\$0.005 → \$0.035)
-- Win rate improvement justifies cost for serious gameplay
-- Adaptive enablement (skills only for complex boards) can reduce average cost
-- Hybrid human-AI gameplay benefits from transparent reasoning
-
-**Latency Considerations**:
-- Skills add 1-2s latency per move (acceptable for turn-based gameplay)
-- Async UI updates maintain responsiveness
-- Progress indicators communicate AI thinking process
+In our measured results, prompt-preference proxies did not reach 2048 in 200 games, while 4-ply expectimax achieved 49% Win@2048. This supports the central thesis that LLMs benefit most from (i) deterministic safety constraints and (ii) hybridization with local evaluation and multi-step lookahead.
 
 ## 7. Limitations
 - The offline benchmark includes `llm_*` proxy agents that do not measure network latency/cost and do not capture true language-model variability.
