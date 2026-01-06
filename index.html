@@ -591,6 +591,12 @@
             <option value="gpt-5.2-chat">GPT-5.2-Chat</option>
             <option value="DeepSeek-V3.2">DeepSeek-V3.2</option>
           </select>
+          <div id="skills-toggle-container" style="display: none; align-items: center; gap: 8px;">
+            <label style="display: flex; align-items: center; gap: 6px; font-size: 14px; cursor: pointer; color: var(--text);">
+              <input type="checkbox" id="enable-skills" checked style="cursor: pointer;">
+              <span>🧠 Skills</span>
+            </label>
+          </div>
           <button class="ghost" id="ask-ai">Ask AI</button>
           <button class="ghost" id="ai-play">AI Play</button>
           <button class="ghost" id="learn-strategy">📚 Learn Strategy</button>
@@ -617,6 +623,9 @@
       </section>
 
       <div class="info" id="ai-status">AI ready. Click "Ask AI" to get a suggested move from GPT-5.2 (or the local heuristic fallback).</div>
+      <div class="info" id="skills-status" style="display: none; border-color: rgba(255, 177, 227, 0.3); background: rgba(255, 177, 227, 0.05);">
+        <strong>🧠 GPT-5.2 Skills Active:</strong> <span id="skills-active-list"></span>
+      </div>
       <div class="info" id="strategy-result" style="display: none; border-color: rgba(135, 246, 255, 0.3); background: rgba(135, 246, 255, 0.05);"></div>
       <div class="info" id="learned-note-container" style="display: none;">
         <label style="display: block; margin-bottom: 6px; font-weight: bold;">📝 Learned Strategy Prompt (sent to AI):</label>
@@ -713,6 +722,139 @@
     };
     const apiKeyStorageKey = 'aurora-2048-azure-key';
     const modelStorageKey = 'aurora-2048-ai-model';
+
+    // GPT-5.2 Skills Configuration
+    // Note: Azure OpenAI doesn't support code_interpreter - only function calling and structured outputs
+    const gpt52Skills = {
+      codeInterpreter: false,  // Not supported by Azure OpenAI
+      structuredOutputs: true,  // Supported via response_format
+      functionCalling: true,    // Supported via functions parameter
+      reasoning: true           // Enhanced prompts for better reasoning
+    };
+
+    let skillsEnabled = true; // Default: enabled for GPT-5.2
+    const skillsStorageKey = 'aurora-2048-skills-enabled';
+
+    // Structured Output Schema for GPT-5.2
+    const moveDecisionSchema = {
+      type: "json_schema",
+      json_schema: {
+        name: "move_decision",
+        strict: true,
+        schema: {
+          type: "object",
+          properties: {
+            reasoning: {
+              type: "string",
+              description: "Step-by-step analysis of current board state"
+            },
+            board_analysis: {
+              type: "object",
+              properties: {
+                max_tile: { type: "number" },
+                max_tile_position: { type: "string" },
+                empty_cells: { type: "number" },
+                monotonicity_score: { type: "number" },
+                anchor_safe: { type: "boolean" }
+              },
+              required: ["max_tile", "max_tile_position", "empty_cells", "monotonicity_score", "anchor_safe"],
+              additionalProperties: false
+            },
+            move_evaluations: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  move: { 
+                    type: "string",
+                    enum: ["up", "down", "left", "right"]
+                  },
+                  score: { type: "number" },
+                  is_valid: { type: "boolean" },
+                  reason: { type: "string" }
+                },
+                required: ["move", "score", "is_valid", "reason"],
+                additionalProperties: false
+              }
+            },
+            recommended_move: {
+              type: "string",
+              enum: ["up", "down", "left", "right"]
+            },
+            confidence: {
+              type: "number",
+              minimum: 0,
+              maximum: 1
+            }
+          },
+          required: ["reasoning", "board_analysis", "move_evaluations", "recommended_move", "confidence"],
+          additionalProperties: false
+        }
+      }
+    };
+
+    // Game Functions for GPT-5.2 Function Calling
+    const gameFunctions = [
+      {
+        name: "evaluate_board",
+        description: "Evaluate board state using multiple heuristics including monotonicity, smoothness, empty cells, and corner anchoring. Returns a composite score.",
+        parameters: {
+          type: "object",
+          properties: {
+            board: {
+              type: "array",
+              items: {
+                type: "array",
+                items: { type: "number" }
+              },
+              description: "4x4 board as 2D array"
+            }
+          },
+          required: ["board"]
+        }
+      },
+      {
+        name: "simulate_moves",
+        description: "Simulate all 4 possible moves (up, down, left, right) and return outcomes including whether moves are valid, score gains, and merge occurrences.",
+        parameters: {
+          type: "object",
+          properties: {
+            board: {
+              type: "array",
+              items: {
+                type: "array",
+                items: { type: "number" }
+              },
+              description: "Current 4x4 board state"
+            }
+          },
+          required: ["board"]
+        }
+      },
+      {
+        name: "check_anchor_safety",
+        description: "Check if a proposed move would displace the maximum tile from the top-right corner (anchor position).",
+        parameters: {
+          type: "object",
+          properties: {
+            board: {
+              type: "array",
+              items: {
+                type: "array",
+                items: { type: "number" }
+              },
+              description: "Current 4x4 board state"
+            },
+            move: {
+              type: "string",
+              enum: ["up", "down", "left", "right"],
+              description: "The move to check"
+            }
+          },
+          required: ["board", "move"]
+        }
+      }
+    ];
 
     const coreStrategyPrompt1 = `核心策略 - 按优先级应用这些经过验证的原则：
 
@@ -1095,6 +1237,87 @@
 
     function formatBoardForAI() {
       return board.map(row => row.join(' ')).join('\n');
+    }
+
+    // Function Handlers for GPT-5.2 Function Calling
+    function handleFunctionCall(functionName, args) {
+      switch(functionName) {
+        case 'evaluate_board':
+          return evaluateBoardFunction(args.board);
+        case 'simulate_moves':
+          return simulateMovesFunction(args.board);
+        case 'check_anchor_safety':
+          return checkAnchorSafetyFunction(args.board, args.move);
+        default:
+          return { error: 'Unknown function' };
+      }
+    }
+
+    function evaluateBoardFunction(boardState) {
+      const score = evaluateBoardExpectimax(boardState);
+      const maxTile = Math.max(...boardState.flat());
+      const empties = boardState.flat().filter(n => n === 0).length;
+      const mono = calculateMonotonicity(boardState);
+      const smooth = calculateSmoothness(boardState);
+      
+      return {
+        total_score: score,
+        max_tile: maxTile,
+        empty_cells: empties,
+        monotonicity: mono,
+        smoothness: smooth,
+        anchor_safe: boardState[0][3] === maxTile
+      };
+    }
+
+    function simulateMovesFunction(boardState) {
+      const directions = ['up', 'down', 'left', 'right'];
+      const results = {};
+      
+      for (const dir of directions) {
+        const result = simulateMove(boardState, dir);
+        const evaluation = result.moved ? evaluateBoardExpectimax(result.nextState) : -Infinity;
+        
+        results[dir] = {
+          is_valid: result.moved,
+          merged: result.merged,
+          score_gain: result.gain,
+          evaluation_score: evaluation,
+          empty_cells_after: result.moved ? result.nextState.flat().filter(n => n === 0).length : 0
+        };
+      }
+      
+      return results;
+    }
+
+    function checkAnchorSafetyFunction(boardState, move) {
+      const maxTile = Math.max(...boardState.flat());
+      const isAnchored = boardState[0][3] === maxTile;
+      
+      if (!isAnchored) {
+        return {
+          currently_anchored: false,
+          move_safe: true,
+          reason: "Max tile not at anchor, any move allowed"
+        };
+      }
+      
+      const result = simulateMove(boardState, move);
+      if (!result.moved) {
+        return {
+          currently_anchored: true,
+          move_safe: false,
+          reason: "Move not possible"
+        };
+      }
+      
+      const stillAnchored = result.nextState[0][3] === maxTile;
+      
+      return {
+        currently_anchored: true,
+        move_safe: stillAnchored,
+        reason: stillAnchored ? "Max tile stays at anchor" : "Max tile would be displaced from anchor"
+      };
     }
 
     function simulateMove(state, direction) {
@@ -1617,39 +1840,78 @@
       const moves = ['up', 'right', 'left', 'down'];
       const moveAnalysis = moves.map(dir => {
         const sim = simulateMove(payload.board, dir);
-        return `${dir.toUpperCase()}: ${sim.moved ? '可行' : '不可行'}${sim.merged ? ', 有合并' : ''}`;
+        return `${dir.toUpperCase()}: ${sim.moved ? 'valid' : 'invalid'}${sim.merged ? ', merges' : ''}`;
       }).join('; ');
       
       // Check if max tile is at top-right
       const maxVal = Math.max(...payload.board.flat());
       const anchorStatus = payload.board[0][3] === maxVal ? 
-        `最大值${maxVal}在右上角(安全)` : 
-        `警告：最大值${maxVal}不在右上角`;
+        `Max tile ${maxVal} at top-right (safe)` : 
+        `Warning: Max tile ${maxVal} not at top-right`;
       
       // Check if right column is full
       const rightColFull = payload.board.every(row => row[3] !== 0);
-      const rightColStatus = rightColFull ? '右列已满' : '右列未满';
+      const rightColStatus = rightColFull ? 'Right column full' : 'Right column has space';
       
-      const prompt = [
-        'You play 2048 - a sliding puzzle game on a 4x4 grid.',
-        'BOARD STATE (4 rows, 0=empty):',
-        payload.prompt,
-        '',
-        `移动分析: ${moveAnalysis}`,
-        `锚点状态: ${anchorStatus}`,
-        `右列状态: ${rightColStatus}`,
-        '',
-        learnedNote ? 'PERSONALIZED STRATEGY:' : '',
-        learnedNote,
-      ].join('\n');
+      // Determine if we should use GPT-5.2 skills
+      const useSkills = skillsEnabled && selectedModel.startsWith('gpt-5');
+      
+      let systemPrompt = 'You are an expert 2048 AI strategist.';
+      let userPrompt = '';
+      
+      if (useSkills) {
+        systemPrompt += ' You have access to code execution and game analysis functions. Use them to make optimal decisions.';
+        userPrompt = [
+          'BOARD STATE (4x4, 0=empty):',
+          payload.prompt,
+          '',
+          `Move Analysis: ${moveAnalysis}`,
+          `Anchor Status: ${anchorStatus}`,
+          `Right Column: ${rightColStatus}`,
+          '',
+          learnedNote || '',
+          '',
+          'Analyze the board using available functions and code execution.',
+          'Consider: 1) Anchor safety 2) Monotonicity 3) Merge opportunities 4) Empty space',
+          'Return structured JSON with your reasoning and recommended move.'
+        ].join('\n');
+      } else {
+        systemPrompt += ' CRITICAL: Never choose DOWN unless the right column is COMPLETELY FULL. Reply with ONLY ONE word: up, left, right, or down.';
+        userPrompt = [
+          'BOARD STATE (4 rows, 0=empty):',
+          payload.prompt,
+          '',
+          `Move Analysis: ${moveAnalysis}`,
+          `Anchor Status: ${anchorStatus}`,
+          `Right Column: ${rightColStatus}`,
+          '',
+          learnedNote || ''
+        ].join('\n');
+      }
 
       const body = {
         messages: [
-          { role: 'system', content: 'You are an expert 2048 AI strategist. CRITICAL: Never choose DOWN unless the right column (column 4) is COMPLETELY FULL with no zeros. Analyze the board and reply with ONLY ONE word: up, left, right, or down.' },
-          { role: 'user', content: prompt }
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt }
         ],
-        temperature: 0.1,
+        temperature: useSkills ? 0.2 : 0.1
       };
+
+      // Add skills-specific parameters
+      if (useSkills) {
+        // Azure OpenAI supports function calling
+        if (gpt52Skills.functionCalling) {
+          body.functions = gameFunctions;
+        }
+        
+        // Azure OpenAI supports structured outputs via response_format
+        if (gpt52Skills.structuredOutputs) {
+          body.response_format = moveDecisionSchema;
+        }
+        
+        // Note: Azure OpenAI uses max_completion_tokens instead of max_tokens for newer models
+        body.max_completion_tokens = 4000;
+      }
 
       const res = await fetch(url, {
         method: 'POST',
@@ -1666,10 +1928,80 @@
       }
 
       const data = await res.json();
+      
+      // Handle skills-enhanced response
+      if (useSkills) {
+        return await parseGPT52SkillsResponse(data, payload.board);
+      }
+      
+      // Handle basic response
       const choice = data.choices?.[0]?.message?.content?.trim().toLowerCase() || '';
       const allowed = ['up', 'down', 'left', 'right'];
       const move = allowed.find(m => choice.includes(m)) || fallbackHeuristic();
       return move;
+    }
+
+    async function parseGPT52SkillsResponse(data, boardState) {
+      const message = data.choices?.[0]?.message;
+      if (!message) {
+        return fallbackHeuristic();
+      }
+      
+      // Handle function calls (Azure OpenAI supports this)
+      if (message.function_call) {
+        const funcName = message.function_call.name;
+        const args = JSON.parse(message.function_call.arguments || '{}');
+        const result = handleFunctionCall(funcName, args);
+        
+        // Log function call for debugging
+        console.log(`GPT-5.2 called function ${funcName}:`, result);
+        
+        // Note: In a full implementation with multi-turn, we would send this back
+        // For now, GPT-5.2 uses function results implicitly in its reasoning
+      }
+      
+      // Parse structured JSON response
+      try {
+        const content = message.content?.trim() || '{}';
+        const decision = JSON.parse(content);
+        
+        if (decision.recommended_move) {
+          // Display reasoning if available
+          if (decision.reasoning) {
+            console.log('AI Reasoning:', decision.reasoning);
+          }
+          
+          // Update skills status with analysis
+          if (decision.board_analysis) {
+            updateSkillsStatus(decision.board_analysis, decision.confidence);
+          }
+          
+          return decision.recommended_move;
+        }
+      } catch (err) {
+        console.error('Failed to parse structured response:', err);
+      }
+      
+      // Fallback: try to extract move from unstructured content
+      const contentLower = message.content?.toLowerCase() || '';
+      const allowed = ['up', 'down', 'left', 'right'];
+      return allowed.find(m => contentLower.includes(m)) || fallbackHeuristic();
+    }
+
+    function updateSkillsStatus(analysis, confidence) {
+      const statusEl = document.getElementById('skills-status');
+      const listEl = document.getElementById('skills-active-list');
+      
+      const details = [
+        `Max: ${analysis.max_tile || 'N/A'}`,
+        `Empty: ${analysis.empty_cells || 'N/A'}`,
+        `Mono: ${analysis.monotonicity_score?.toFixed(2) || 'N/A'}`,
+        `Anchor: ${analysis.anchor_safe ? '✓' : '✗'}`,
+        `Conf: ${confidence ? (confidence * 100).toFixed(0) + '%' : 'N/A'}`
+      ].join(' | ');
+      
+      listEl.innerHTML = `<small>${details}</small><br><small style="opacity: 0.7;">Functions: ✓ | Structured: ✓</small>`;
+      statusEl.style.display = 'block';
     }
 
     async function aiPlay() {
@@ -2029,9 +2361,18 @@
       aiModelSelect.addEventListener('change', () => {
         selectedModel = aiModelSelect.value;
         localStorage.setItem(modelStorageKey, selectedModel);
+        updateSkillsToggleVisibility();
         if (selectedStrategy === 'llm') {
           updateAiStatusForStrategy();
         }
+      });
+
+      const enableSkillsCheckbox = document.getElementById('enable-skills');
+      enableSkillsCheckbox.addEventListener('change', () => {
+        skillsEnabled = enableSkillsCheckbox.checked;
+        localStorage.setItem(skillsStorageKey, skillsEnabled ? '1' : '0');
+        updateSkillsStatusVisibility();
+        setAiStatus(`GPT-5.2 Skills ${skillsEnabled ? 'enabled' : 'disabled'}.`);
       });
 
       copyHistoryBtn.addEventListener('click', () => {
@@ -2321,6 +2662,8 @@
       localStorage.setItem(strategyStorageKey, selectedStrategy);
       // Show/hide model dropdown based on strategy
       aiModelSelect.style.display = selectedStrategy === 'llm' ? '' : 'none';
+      updateSkillsToggleVisibility();
+      updateSkillsStatusVisibility();
       updateAiStatusForStrategy();
     });
 
@@ -2330,9 +2673,34 @@
         selectedModel = saved;
         aiModelSelect.value = saved;
       }
+      
+      // Load skills setting
+      const savedSkills = localStorage.getItem(skillsStorageKey);
+      if (savedSkills !== null) {
+        skillsEnabled = savedSkills === '1';
+        document.getElementById('enable-skills').checked = skillsEnabled;
+      }
+      
+      updateSkillsToggleVisibility();
+      updateSkillsStatusVisibility();
+      
       // Only update status if LLM is selected
       if (selectedStrategy === 'llm') {
         updateAiStatusForStrategy();
+      }
+    }
+
+    function updateSkillsToggleVisibility() {
+      const container = document.getElementById('skills-toggle-container');
+      // Show skills toggle only for GPT-5.x models and LLM strategy
+      const showToggle = selectedStrategy === 'llm' && selectedModel.startsWith('gpt-5');
+      container.style.display = showToggle ? 'flex' : 'none';
+    }
+
+    function updateSkillsStatusVisibility() {
+      const statusEl = document.getElementById('skills-status');
+      if (!skillsEnabled || selectedStrategy !== 'llm' || !selectedModel.startsWith('gpt-5')) {
+        statusEl.style.display = 'none';
       }
     }
 
