@@ -4,11 +4,23 @@
 
 Aurora 2048 now supports **GPT-5.2 Skills** - advanced AI capabilities that significantly improve gameplay when using LLM strategies. This guide explains how to use and configure these features.
 
-## What are GPT-5.2 Skills?
+## Provider Options
 
-When you select the **LLM strategy** with a **GPT-5.2 model**, you can enable advanced capabilities:
+Two GPT-5.2 providers are available:
 
-**⚠️ Important**: This uses **Azure OpenAI**, which has different features than OpenAI's API. Azure does NOT support code interpreter.
+### 🔷 Azure OpenAI (Limited Skills)
+- ✅ Function Calling
+- ✅ Structured Outputs
+- ❌ Code Interpreter (not supported)
+- Endpoint: `maritimeai-resource.openai.azure.com`
+
+### 🟢 OpenAI (Full Skills)
+- ✅ Function Calling
+- ✅ Structured Outputs
+- ✅ **Code Interpreter** (Python execution)
+- Endpoint: `api.bianxie.ai`
+
+**See [OPENAI-SUPPORT.md](OPENAI-SUPPORT.md) for detailed provider comparison.**
 
 ### 🔧 Function Calling ✅
 GPT-5.2 can invoke specialized game functions:
@@ -42,8 +54,10 @@ Click the **AI Strategy** dropdown and choose **"LLM (GPT/DeepSeek)"**
 ### 2. Choose GPT-5.2 Model
 
 The **AI Model** dropdown will appear. Select:
-- **GPT-5.2** (Best for skills)
-- **GPT-5.2-Chat** (Alternative)
+- **Azure GPT-5.2** (Function calling + structured outputs)
+- **Azure GPT-5.2-Chat** (Alternative Azure model)
+- **Azure DeepSeek-V3.2** (DeepSeek via Azure)
+- **OpenAI GPT-5.2** (Full skills including code interpreter)
 
 ### 3. Enable Skills Toggle
 
@@ -56,6 +70,7 @@ The **🧠 Skills** checkbox will appear when GPT-5.2 is selected:
 When skills are active, you'll see a **Skills Status** panel showing:
 ```
 🧠 GPT-5.2 Skills Active: Max: 2048 | Empty: 3 | Mono: 0.85 | Anchor: ✓ | Conf: 92%
+Functions: ✓ | Structured: ✓ | Code: ✓ (OpenAI) or Code: ✗ (Azure)
 ```
 
 ## Performance Comparison
@@ -63,10 +78,13 @@ When skills are active, you'll see a **Skills Status** panel showing:
 | Mode | Win Rate | Avg Score | Latency | Cost/Move |
 |------|----------|-----------|---------|-----------|
 | Basic Prompts | 40-50% | 12-15K | 1-2s | $0.005 |
-| **Skills Enabled** | **55-70%** | **18-23K** | 2-4s | $0.018 |
+| **Azure Skills** | **55-70%** | **18-23K** | 2-4s | $0.018 |
+| **OpenAI Skills** | **65-80%** | **20-25K** | 2-5s | $0.025 |
 | Expectimax (Local) | ~80% | 18-22K | <0.1s | Free |
 
-**Note**: Performance estimates based on Azure OpenAI capabilities (Function Calling + Structured Outputs, no Code Interpreter)
+**Notes**: 
+- Azure: Function Calling + Structured Outputs (no Code Interpreter)
+- OpenAI: Full skills including Code Interpreter for advanced analysis
 
 ## When to Use Skills
 

@@ -587,9 +587,10 @@
             <option value="llm">LLM (GPT/DeepSeek)</option>
           </select>
           <select id="ai-model" class="ghost" style="padding: 8px 12px; background: transparent; color: var(--text); border: 1px solid var(--accent); border-radius: 8px; cursor: pointer; font-size: 14px; display: none;">
-            <option value="gpt-5.2">GPT-5.2</option>
-            <option value="gpt-5.2-chat">GPT-5.2-Chat</option>
-            <option value="DeepSeek-V3.2">DeepSeek-V3.2</option>
+            <option value="gpt-5.2">Azure GPT-5.2</option>
+            <option value="gpt-5.2-chat">Azure GPT-5.2-Chat</option>
+            <option value="DeepSeek-V3.2">Azure DeepSeek-V3.2</option>
+            <option value="openai-gpt-5.2">OpenAI GPT-5.2</option>
           </select>
           <div id="skills-toggle-container" style="display: none; align-items: center; gap: 8px;">
             <label style="display: flex; align-items: center; gap: 6px; font-size: 14px; cursor: pointer; color: var(--text);">
@@ -711,6 +712,11 @@
         deployment: 'DeepSeek-V3.2',
         apiVersion: '2025-03-01-preview',
         type: 'azure'
+      },
+      'openai-gpt-5.2': {
+        endpoint: 'https://api.bianxie.ai',
+        model: 'gpt-5.2',
+        type: 'openai'
       }
     };
 
@@ -721,16 +727,27 @@
       apiVersion: '2025-03-01-preview'
     };
     const apiKeyStorageKey = 'aurora-2048-azure-key';
+    const openaiApiKeyStorageKey = 'aurora-2048-openai-key';
     const modelStorageKey = 'aurora-2048-ai-model';
 
     // GPT-5.2 Skills Configuration
-    // Note: Azure OpenAI doesn't support code_interpreter - only function calling and structured outputs
-    const gpt52Skills = {
+    // Azure OpenAI: only function calling and structured outputs
+    // OpenAI: full skills including code_interpreter
+    const gpt52SkillsAzure = {
       codeInterpreter: false,  // Not supported by Azure OpenAI
       structuredOutputs: true,  // Supported via response_format
       functionCalling: true,    // Supported via functions parameter
       reasoning: true           // Enhanced prompts for better reasoning
     };
+    
+    const gpt52SkillsOpenAI = {
+      codeInterpreter: true,   // ✓ Supported by OpenAI
+      structuredOutputs: true,  // ✓ Supported by OpenAI
+      functionCalling: true,    // ✓ Supported by OpenAI
+      reasoning: true           // Enhanced prompts for better reasoning
+    };
+    
+    let openaiApiKey = '';
 
     let skillsEnabled = true; // Default: enabled for GPT-5.2
     const skillsStorageKey = 'aurora-2048-skills-enabled';
@@ -1145,23 +1162,51 @@
     }
 
     function promptForApiKey() {
-      const input = window.prompt('Enter your Azure OpenAI API key (stored locally in this browser):', '');
-      if (input && input.trim()) {
-        azureAI.apiKey = input.trim();
-        localStorage.setItem(apiKeyStorageKey, azureAI.apiKey);
-        setAiStatus('Azure API key saved locally. GPT-5.2 will be used when configured.');
+      const model = aiModels[selectedModel];
+      if (model.type === 'openai') {
+        const input = window.prompt('Enter your OpenAI API key (stored locally in this browser):', '');
+        if (input && input.trim()) {
+          openaiApiKey = input.trim();
+          localStorage.setItem(openaiApiKeyStorageKey, openaiApiKey);
+          setAiStatus('OpenAI API key saved locally. GPT-5.2 will be used.');
+        } else {
+          setAiStatus('No API key set; AI uses fallback heuristic until you add a key.');
+        }
       } else {
-        setAiStatus('No API key set; AI uses fallback heuristic until you add a key.');
+        const input = window.prompt('Enter your Azure OpenAI API key (stored locally in this browser):', '');
+        if (input && input.trim()) {
+          azureAI.apiKey = input.trim();
+          localStorage.setItem(apiKeyStorageKey, azureAI.apiKey);
+          setAiStatus('Azure API key saved locally. GPT-5.2 will be used when configured.');
+        } else {
+          setAiStatus('No API key set; AI uses fallback heuristic until you add a key.');
+        }
       }
     }
 
     function loadApiKey() {
-      const saved = localStorage.getItem(apiKeyStorageKey);
-      if (saved) {
-        azureAI.apiKey = saved;
-        setAiStatus('Azure API key loaded from local storage.');
-      } else {
+      // Load Azure API key
+      const azureSaved = localStorage.getItem(apiKeyStorageKey);
+      if (azureSaved) {
+        azureAI.apiKey = azureSaved;
+      }
+      
+      // Load OpenAI API key
+      const openaiSaved = localStorage.getItem(openaiApiKeyStorageKey);
+      if (openaiSaved) {
+        openaiApiKey = openaiSaved;
+      }
+      
+      // Prompt for key based on current model selection
+      const model = aiModels[selectedModel];
+      if (model.type === 'openai' && !openaiApiKey) {
+        setAiStatus('OpenAI API key needed for full skills support.');
         promptForApiKey();
+      } else if (model.type === 'azure' && !azureAI.apiKey) {
+        setAiStatus('Azure API key loaded or ready to configure.');
+        promptForApiKey();
+      } else {
+        setAiStatus('API keys loaded from local storage.');
       }
     }
 
@@ -1833,7 +1878,17 @@
 
     async function fetchAzureMove(payload) {
       const model = aiModels[selectedModel];
-      const url = `${model.endpoint}/openai/deployments/${model.deployment}/chat/completions?api-version=${model.apiVersion}`;
+      const isOpenAI = model.type === 'openai';
+      const isAzure = model.type === 'azure';
+      
+      // Build URL based on provider
+      let url;
+      if (isAzure) {
+        url = `${model.endpoint}/openai/deployments/${model.deployment}/chat/completions?api-version=${model.apiVersion}`;
+      } else if (isOpenAI) {
+        url = `${model.endpoint}/v1/chat/completions`;
+      }
+      
       const learnedNote = getLearnedStrategyPrompt();
       
       // Check which moves are valid and what they do
@@ -1853,8 +1908,9 @@
       const rightColFull = payload.board.every(row => row[3] !== 0);
       const rightColStatus = rightColFull ? 'Right column full' : 'Right column has space';
       
-      // Determine if we should use GPT-5.2 skills
-      const useSkills = skillsEnabled && selectedModel.startsWith('gpt-5');
+      // Determine if we should use GPT-5.2 skills and which configuration
+      const useSkills = skillsEnabled && (selectedModel.startsWith('gpt-5') || selectedModel === 'openai-gpt-5.2');
+      const gpt52Skills = isOpenAI ? gpt52SkillsOpenAI : gpt52SkillsAzure;
       
       let systemPrompt = 'You are an expert 2048 AI strategist.';
       let userPrompt = '';
@@ -1896,35 +1952,76 @@
         ],
         temperature: useSkills ? 0.2 : 0.1
       };
+      
+      // Add model for OpenAI (Azure uses deployment in URL)
+      if (isOpenAI) {
+        body.model = model.model;
+      }
 
       // Add skills-specific parameters
       if (useSkills) {
-        // Azure OpenAI supports function calling
-        if (gpt52Skills.functionCalling) {
-          body.functions = gameFunctions;
+        // Build tools array
+        const tools = [];
+        
+        // Add code_interpreter for OpenAI (not supported by Azure)
+        if (gpt52Skills.codeInterpreter && isOpenAI) {
+          tools.push({ type: 'code_interpreter' });
         }
         
-        // Azure OpenAI supports structured outputs via response_format
+        // Add function calling
+        if (gpt52Skills.functionCalling) {
+          // OpenAI uses tools array with type 'function'
+          if (isOpenAI) {
+            for (const func of gameFunctions) {
+              tools.push({
+                type: 'function',
+                function: func
+              });
+            }
+          } else {
+            // Azure uses functions parameter directly
+            body.functions = gameFunctions;
+          }
+        }
+        
+        if (tools.length > 0 && isOpenAI) {
+          body.tools = tools;
+        }
+        
+        // Add structured outputs via response_format
         if (gpt52Skills.structuredOutputs) {
           body.response_format = moveDecisionSchema;
         }
         
-        // Note: Azure OpenAI uses max_completion_tokens instead of max_tokens for newer models
-        body.max_completion_tokens = 4000;
+        // Token limits: Azure uses max_completion_tokens, OpenAI uses max_tokens
+        if (isAzure) {
+          body.max_completion_tokens = 4000;
+        } else {
+          body.max_tokens = 4000;
+        }
       }
 
+      // Build headers based on provider
+      const headers = {
+        'Content-Type': 'application/json'
+      };
+      
+      if (isAzure) {
+        headers['api-key'] = azureAI.apiKey;
+      } else if (isOpenAI) {
+        headers['Authorization'] = `Bearer ${openaiApiKey}`;
+      }
+      
       const res = await fetch(url, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'api-key': azureAI.apiKey
-        },
+        headers: headers,
         body: JSON.stringify(body)
       });
 
       if (!res.ok) {
         const text = await res.text();
-        throw new Error(`Azure OpenAI error: ${res.status} ${text}`);
+        const provider = isOpenAI ? 'OpenAI' : 'Azure OpenAI';
+        throw new Error(`${provider} API error: ${res.status} ${text}`);
       }
 
       const data = await res.json();
@@ -1944,18 +2041,46 @@
     async function parseGPT52SkillsResponse(data, boardState) {
       const message = data.choices?.[0]?.message;
       if (!message) {
+        console.error('No message in response:', data);
         return fallbackHeuristic();
       }
       
-      // Handle function calls (Azure OpenAI supports this)
-      if (message.function_call) {
+      // Debug: Log the full message structure
+      console.log('GPT-5.2 Response Message:', message);
+      
+      // Handle function calls - Azure uses function_call, OpenAI uses tool_calls
+      if (message.function_call && message.function_call.name) {
         const funcName = message.function_call.name;
-        const args = JSON.parse(message.function_call.arguments || '{}');
-        const result = handleFunctionCall(funcName, args);
-        
-        // Log function call for debugging
-        console.log(`GPT-5.2 called function ${funcName}:`, result);
-        
+        try {
+          const args = JSON.parse(message.function_call.arguments || '{}');
+          const result = handleFunctionCall(funcName, args);
+          console.log(`GPT-5.2 called function ${funcName}:`, result);
+        } catch (err) {
+          console.error('Error parsing function call arguments:', err);
+        }
+      } else if (message.function_call && !message.function_call.name) {
+        console.log('Skipping empty function_call (structured output mode)');
+      }
+      
+      // Handle OpenAI tool_calls (multiple calls possible)
+      if (message.tool_calls && message.tool_calls.length > 0) {
+        console.log('Processing tool_calls:', message.tool_calls);
+        for (const toolCall of message.tool_calls) {
+          if (toolCall.type === 'function') {
+            const funcName = toolCall.function?.name;
+            if (!funcName) {
+              console.error('Tool call with empty function name:', toolCall);
+              continue;
+            }
+            try {
+              const args = JSON.parse(toolCall.function.arguments || '{}');
+              const result = handleFunctionCall(funcName, args);
+              console.log(`GPT-5.2 called tool ${funcName}:`, result);
+            } catch (err) {
+              console.error('Error parsing tool call arguments:', err);
+            }
+          }
+        }
         // Note: In a full implementation with multi-turn, we would send this back
         // For now, GPT-5.2 uses function results implicitly in its reasoning
       }
@@ -1991,6 +2116,8 @@
     function updateSkillsStatus(analysis, confidence) {
       const statusEl = document.getElementById('skills-status');
       const listEl = document.getElementById('skills-active-list');
+      const model = aiModels[selectedModel];
+      const isOpenAI = model?.type === 'openai';
       
       const details = [
         `Max: ${analysis.max_tile || 'N/A'}`,
@@ -2000,7 +2127,11 @@
         `Conf: ${confidence ? (confidence * 100).toFixed(0) + '%' : 'N/A'}`
       ].join(' | ');
       
-      listEl.innerHTML = `<small>${details}</small><br><small style="opacity: 0.7;">Functions: ✓ | Structured: ✓</small>`;
+      const skillsInfo = isOpenAI 
+        ? 'Functions: ✓ | Structured: ✓ | Code: ✓' 
+        : 'Functions: ✓ | Structured: ✓ | Code: ✗ (Azure)';
+      
+      listEl.innerHTML = `<small>${details}</small><br><small style="opacity: 0.7;">${skillsInfo}</small>`;
       statusEl.style.display = 'block';
     }
 
@@ -2361,6 +2492,27 @@
       aiModelSelect.addEventListener('change', () => {
         selectedModel = aiModelSelect.value;
         localStorage.setItem(modelStorageKey, selectedModel);
+        
+        // Load appropriate API key for the new model
+        const model = aiModels[selectedModel];
+        if (model.type === 'openai') {
+          const saved = localStorage.getItem(openaiApiKeyStorageKey);
+          if (saved) {
+            openaiApiKey = saved;
+            setAiStatus('Using OpenAI GPT-5.2 with full skills support (including code interpreter).');
+          } else {
+            promptForApiKey();
+          }
+        } else if (model.type === 'azure') {
+          const saved = localStorage.getItem(apiKeyStorageKey);
+          if (saved) {
+            azureAI.apiKey = saved;
+            setAiStatus('Using Azure OpenAI (function calling & structured outputs only).');
+          } else {
+            promptForApiKey();
+          }
+        }
+        
         updateSkillsToggleVisibility();
         if (selectedStrategy === 'llm') {
           updateAiStatusForStrategy();
@@ -2692,14 +2844,14 @@
 
     function updateSkillsToggleVisibility() {
       const container = document.getElementById('skills-toggle-container');
-      // Show skills toggle only for GPT-5.x models and LLM strategy
-      const showToggle = selectedStrategy === 'llm' && selectedModel.startsWith('gpt-5');
+      // Show skills toggle for GPT-5.x models (both Azure and OpenAI) when LLM strategy is selected
+      const showToggle = selectedStrategy === 'llm' && (selectedModel.startsWith('gpt-5') || selectedModel === 'openai-gpt-5.2');
       container.style.display = showToggle ? 'flex' : 'none';
     }
 
     function updateSkillsStatusVisibility() {
       const statusEl = document.getElementById('skills-status');
-      if (!skillsEnabled || selectedStrategy !== 'llm' || !selectedModel.startsWith('gpt-5')) {
+      if (!skillsEnabled || selectedStrategy !== 'llm' || (!selectedModel.startsWith('gpt-5') && selectedModel !== 'openai-gpt-5.2')) {
         statusEl.style.display = 'none';
       }
     }
