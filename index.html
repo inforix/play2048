@@ -1916,7 +1916,32 @@
       let userPrompt = '';
       
       if (useSkills) {
-        systemPrompt += ' You have access to code execution and game analysis functions. Use them to make optimal decisions.';
+        // Enhanced prompt to encourage code_interpreter usage
+        if (gpt52Skills.codeInterpreter && isOpenAI) {
+          systemPrompt += ' You have access to Python code execution via code_interpreter. IMPORTANT: Write and execute Python code to analyze the board state, calculate heuristics, and determine the best move. Also use the available game analysis functions.';
+        } else {
+          systemPrompt += ' You have access to game analysis functions. Use them to make optimal decisions.';
+        }
+        
+        const codeInstructions = (gpt52Skills.codeInterpreter && isOpenAI) 
+          ? [
+              'STEP 1: Write Python code to:',
+              '  - Parse the board as a 4x4 numpy array',
+              '  - Calculate monotonicity score (row/column decreasing patterns)',
+              '  - Calculate smoothness (minimize adjacent tile differences)',
+              '  - Simulate all 4 moves and evaluate outcomes',
+              '  - Score each move considering: merges, empty cells, anchor position',
+              '',
+              'STEP 2: Execute the code and analyze results',
+              'STEP 3: Call game functions if needed for additional validation',
+              'STEP 4: Return structured JSON with your code-based recommendation'
+            ].join('\n')
+          : [
+              'Analyze the board using available functions and code execution.',
+              'Consider: 1) Anchor safety 2) Monotonicity 3) Merge opportunities 4) Empty space',
+              'Return structured JSON with your reasoning and recommended move.'
+            ].join('\n');
+        
         userPrompt = [
           'BOARD STATE (4x4, 0=empty):',
           payload.prompt,
@@ -1927,9 +1952,7 @@
           '',
           learnedNote || '',
           '',
-          'Analyze the board using available functions and code execution.',
-          'Consider: 1) Anchor safety 2) Monotonicity 3) Merge opportunities 4) Empty space',
-          'Return structured JSON with your reasoning and recommended move.'
+          codeInstructions
         ].join('\n');
       } else {
         systemPrompt += ' CRITICAL: Never choose DOWN unless the right column is COMPLETELY FULL. Reply with ONLY ONE word: up, left, right, or down.';
@@ -2063,6 +2086,9 @@
       }
       
       // Handle OpenAI tool_calls (multiple calls possible)
+      let codeInterpreterUsed = false;
+      const codeExecutions = [];
+      
       if (message.tool_calls && message.tool_calls.length > 0) {
         console.log('Processing tool_calls:', message.tool_calls);
         for (const toolCall of message.tool_calls) {
@@ -2075,10 +2101,27 @@
             try {
               const args = JSON.parse(toolCall.function.arguments || '{}');
               const result = handleFunctionCall(funcName, args);
-              console.log(`GPT-5.2 called tool ${funcName}:`, result);
+              console.log(`✓ GPT-5.2 called function ${funcName}:`, result);
             } catch (err) {
               console.error('Error parsing tool call arguments:', err);
             }
+          } else if (toolCall.type === 'code_interpreter') {
+            // Code interpreter was used!
+            codeInterpreterUsed = true;
+            const codeInput = toolCall.code_interpreter?.input || 'N/A';
+            const codeOutputs = toolCall.code_interpreter?.outputs || [];
+            
+            console.log('%c🔬 CODE INTERPRETER USED!', 'color: #00ff00; font-weight: bold; font-size: 14px;');
+            console.log('Code Input:', codeInput);
+            console.log('Code Outputs:', codeOutputs);
+            
+            codeExecutions.push({
+              input: codeInput,
+              outputs: codeOutputs
+            });
+            
+            // Display in skills status
+            displayCodeInterpreterUsage(codeInput, codeOutputs);
           }
         }
         // Note: In a full implementation with multi-turn, we would send this back
@@ -2096,9 +2139,9 @@
             console.log('AI Reasoning:', decision.reasoning);
           }
           
-          // Update skills status with analysis
+          // Update skills status with analysis and code interpreter usage
           if (decision.board_analysis) {
-            updateSkillsStatus(decision.board_analysis, decision.confidence);
+            updateSkillsStatus(decision.board_analysis, decision.confidence, codeInterpreterUsed);
           }
           
           return decision.recommended_move;
@@ -2113,7 +2156,7 @@
       return allowed.find(m => contentLower.includes(m)) || fallbackHeuristic();
     }
 
-    function updateSkillsStatus(analysis, confidence) {
+    function updateSkillsStatus(analysis, confidence, codeInterpreterUsed = false) {
       const statusEl = document.getElementById('skills-status');
       const listEl = document.getElementById('skills-active-list');
       const model = aiModels[selectedModel];
@@ -2127,11 +2170,46 @@
         `Conf: ${confidence ? (confidence * 100).toFixed(0) + '%' : 'N/A'}`
       ].join(' | ');
       
+      const codeStatus = codeInterpreterUsed ? '🔬 Code: ✓ USED' : (isOpenAI ? 'Code: ○' : 'Code: ✗');
       const skillsInfo = isOpenAI 
-        ? 'Functions: ✓ | Structured: ✓ | Code: ✓' 
+        ? `Functions: ✓ | Structured: ✓ | ${codeStatus}` 
         : 'Functions: ✓ | Structured: ✓ | Code: ✗ (Azure)';
       
       listEl.innerHTML = `<small>${details}</small><br><small style="opacity: 0.7;">${skillsInfo}</small>`;
+      statusEl.style.display = 'block';
+    }
+    
+    function displayCodeInterpreterUsage(codeInput, codeOutputs) {
+      const statusEl = document.getElementById('skills-status');
+      const listEl = document.getElementById('skills-active-list');
+      
+      // Create detailed display
+      let outputsHtml = '';
+      if (codeOutputs && codeOutputs.length > 0) {
+        outputsHtml = codeOutputs.map((output, idx) => {
+          if (output.type === 'logs') {
+            return `<div style="margin-top: 8px;"><strong>Log ${idx + 1}:</strong><pre style="background: rgba(0,0,0,0.3); padding: 8px; border-radius: 4px; font-size: 11px; overflow-x: auto;">${output.logs || 'N/A'}</pre></div>`;
+          } else if (output.type === 'image') {
+            return `<div style="margin-top: 8px;"><strong>Image ${idx + 1}:</strong> <em>Generated</em></div>`;
+          } else {
+            return `<div style="margin-top: 8px;"><strong>Output ${idx + 1}:</strong> ${JSON.stringify(output)}</div>`;
+          }
+        }).join('');
+      } else {
+        outputsHtml = '<div style="margin-top: 8px; color: var(--muted);">No outputs captured</div>';
+      }
+      
+      const codeHtml = `
+        <div style="margin-top: 10px; padding: 10px; background: rgba(0, 255, 0, 0.05); border: 1px solid rgba(0, 255, 0, 0.2); border-radius: 8px;">
+          <strong style="color: #00ff00;">🔬 CODE INTERPRETER EXECUTED!</strong>
+          <div style="margin-top: 8px;"><strong>Code Input:</strong></div>
+          <pre style="background: rgba(0,0,0,0.3); padding: 8px; border-radius: 4px; font-size: 11px; overflow-x: auto; margin-top: 4px;">${codeInput}</pre>
+          ${outputsHtml}
+        </div>
+      `;
+      
+      // Prepend to existing content
+      listEl.innerHTML = codeHtml + listEl.innerHTML;
       statusEl.style.display = 'block';
     }
 
