@@ -1,8 +1,42 @@
-# Changelog: OpenAI GPT-5.2 Support
+# Changelog: OpenAI GPT-5.2 Support & LLM Dataset Export
 
-## Date: January 6, 2026
+## Latest Update: January 6, 2026 - LLM Training Dataset Export
 
-## Summary
+### New Feature: Export Training Data for Fine-Tuning
+
+Added ability to export game collection as training data for fine-tuning custom LLMs.
+
+#### Features
+- **Export Button**: "🧠 Export LLM Dataset" in Game Collection panel
+- **JSONL Format**: OpenAI/Azure fine-tuning compatible
+- **Quality Filter**: Only exports games with score > 1000
+- **Two-File Export**:
+  - Training dataset (`.jsonl`) - Chat completion examples
+  - Metadata file (`.json`) - Statistics and instructions
+- **Use Cases**: Fine-tune GPT-3.5-turbo, GPT-4, or custom models
+
+#### Export Format
+Each move becomes a training example:
+```jsonl
+{"messages": [{"role": "system", "content": "..."}, {"role": "user", "content": "Board:\n..."}, {"role": "assistant", "content": "up"}]}
+```
+
+#### Documentation
+- **NEW**: [QUICKSTART-LLM-EXPORT.md](QUICKSTART-LLM-EXPORT.md) - Complete guide to exporting and fine-tuning
+- Updated: [spec.md](spec.md) - Added export feature to Game Collection section
+- Updated: [IMPLEMENTATION-SUMMARY.md](IMPLEMENTATION-SUMMARY.md) - Added feature documentation
+
+#### Implementation
+- Function: `exportLLMDataset()` - Converts games to JSONL + metadata
+- Event listener: Export button click handler
+- UI: Button in Game Collection panel
+- Validation: Checks for games, filters by quality, generates proper format
+
+---
+
+## Previous Update: January 6, 2026 - OpenAI GPT-5.2 Support
+
+### Summary
 
 Added support for **OpenAI GPT-5.2** with full skills capabilities including **code interpreter**, alongside existing Azure OpenAI support.
 

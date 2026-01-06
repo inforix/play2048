@@ -636,6 +636,7 @@
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
           <label style="font-weight: bold;">📦 Game Collection</label>
           <div style="display: flex; gap: 8px;">
+            <button class="ghost" id="export-dataset-btn" style="padding: 6px 12px; font-size: 12px;">🧠 Export LLM Dataset</button>
             <button class="ghost" id="import-btn" style="padding: 6px 12px; font-size: 12px;">📥 Import JSON</button>
             <button class="ghost" id="clear-collection" style="padding: 6px 12px; font-size: 12px;">🗑️ Clear All</button>
           </div>
@@ -2567,6 +2568,9 @@
       const clearCollectionBtn = document.getElementById('clear-collection');
       clearCollectionBtn.addEventListener('click', clearGameCollection);
 
+      const exportDatasetBtn = document.getElementById('export-dataset-btn');
+      exportDatasetBtn.addEventListener('click', exportLLMDataset);
+
       aiModelSelect.addEventListener('change', () => {
         selectedModel = aiModelSelect.value;
         localStorage.setItem(modelStorageKey, selectedModel);
@@ -3210,6 +3214,126 @@ Respond in EXACTLY this JSON format (no other text):
       gameCollection = [];
       saveGameCollection();
       setAiStatus('Game collection cleared.');
+    }
+
+    function exportLLMDataset() {
+      if (gameCollection.length === 0) {
+        alert('No games in collection. Play some games first or import JSON files!');
+        return;
+      }
+
+      // Create a fine-tuning dataset in JSONL format (one JSON object per line)
+      // Each entry is a training example showing:
+      // - The board state
+      // - The move that was made
+      // This format is suitable for OpenAI fine-tuning or similar platforms
+      
+      const trainingExamples = [];
+      
+      for (const game of gameCollection) {
+        // Only use games with decent performance (score > 1000)
+        if (game.finalScore < 1000) continue;
+        
+        for (let i = 0; i < game.moves.length; i++) {
+          const move = game.moves[i];
+          const boardState = move.board;
+          const direction = move.move;
+          
+          // Format board as a readable string
+          const boardStr = boardState.map(row => 
+            row.map(v => (v === 0 ? '   .' : String(v).padStart(4, ' '))).join(' ')
+          ).join('\n');
+          
+          // Create a training example in chat completion format
+          // This teaches the LLM: given this board state, make this move
+          const example = {
+            messages: [
+              {
+                role: "system",
+                content: "You are an expert 2048 game AI. Analyze the board state and suggest the best move. Respond with only one word: up, down, left, or right."
+              },
+              {
+                role: "user",
+                content: `Current board state (4x4 grid, . = empty):\n${boardStr}\n\nWhat move should I make?`
+              },
+              {
+                role: "assistant",
+                content: direction
+              }
+            ]
+          };
+          
+          trainingExamples.push(example);
+        }
+      }
+      
+      if (trainingExamples.length === 0) {
+        alert('No suitable training examples found. Games need score > 1000.');
+        return;
+      }
+      
+      // Convert to JSONL format (one JSON object per line)
+      const jsonlContent = trainingExamples.map(ex => JSON.stringify(ex)).join('\n');
+      
+      // Also create a metadata file with statistics
+      const metadata = {
+        dataset_info: {
+          format: "OpenAI fine-tuning JSONL",
+          created: new Date().toISOString(),
+          total_examples: trainingExamples.length,
+          games_used: gameCollection.filter(g => g.finalScore >= 1000).length,
+          total_games_in_collection: gameCollection.length
+        },
+        statistics: {
+          avg_score: Math.round(gameCollection.reduce((sum, g) => sum + g.finalScore, 0) / gameCollection.length),
+          best_score: Math.max(...gameCollection.map(g => g.finalScore)),
+          total_moves: gameCollection.reduce((sum, g) => sum + g.totalMoves, 0),
+          win_rate: (gameCollection.filter(g => g.won).length / gameCollection.length * 100).toFixed(1) + '%'
+        },
+        usage_instructions: {
+          openai: "Use this JSONL file with OpenAI's fine-tuning API for GPT-3.5-turbo or GPT-4",
+          azure: "Upload to Azure OpenAI Studio for custom model training",
+          format: "Each line is a complete training example in chat completion format"
+        }
+      };
+      
+      // Create a ZIP-like structure with both files
+      // Since we can't create actual ZIP in browser easily, we'll create two separate downloads
+      
+      // Download JSONL file
+      const jsonlBlob = new Blob([jsonlContent], { type: 'application/jsonl' });
+      const jsonlUrl = URL.createObjectURL(jsonlBlob);
+      const jsonlLink = document.createElement('a');
+      jsonlLink.href = jsonlUrl;
+      jsonlLink.download = `2048-training-dataset-${new Date().toISOString().split('T')[0]}.jsonl`;
+      document.body.appendChild(jsonlLink);
+      jsonlLink.click();
+      document.body.removeChild(jsonlLink);
+      URL.revokeObjectURL(jsonlUrl);
+      
+      // Download metadata file
+      setTimeout(() => {
+        const metaBlob = new Blob([JSON.stringify(metadata, null, 2)], { type: 'application/json' });
+        const metaUrl = URL.createObjectURL(metaBlob);
+        const metaLink = document.createElement('a');
+        metaLink.href = metaUrl;
+        metaLink.download = `2048-dataset-metadata-${new Date().toISOString().split('T')[0]}.json`;
+        document.body.appendChild(metaLink);
+        metaLink.click();
+        document.body.removeChild(metaLink);
+        URL.revokeObjectURL(metaUrl);
+        
+        setAiStatus(`✓ Exported ${trainingExamples.length} training examples from ${gameCollection.filter(g => g.finalScore >= 1000).length} games. Check your downloads!`);
+        
+        // Visual feedback on button
+        const btn = document.getElementById('export-dataset-btn');
+        btn.style.background = 'rgba(135, 246, 255, 0.2)';
+        btn.style.borderColor = 'rgba(135, 246, 255, 0.4)';
+        setTimeout(() => {
+          btn.style.background = '';
+          btn.style.borderColor = '';
+        }, 2000);
+      }, 500);
     }
 
     function removeGameFromCollection(gameId) {

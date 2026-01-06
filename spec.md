@@ -148,6 +148,12 @@ When using GPT-5.2 models with LLM strategy, advanced skills can be enabled:
   - Extracts common strategies from high-scoring games
   - Generates comprehensive strategy guide
 - **Import JSON**: load multiple downloaded history files into collection
+- **Export LLM Dataset** button: exports training data for fine-tuning
+  - Generates JSONL format for OpenAI/Azure fine-tuning
+  - Includes only quality games (score > 1000)
+  - Creates metadata file with statistics and instructions
+  - Each move becomes a training example (board state → move)
+  - Suitable for fine-tuning GPT-3.5-turbo, GPT-4, or custom models
 - Learned strategies applied when using LLM AI mode
 
 ### Move History Features

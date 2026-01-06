@@ -117,14 +117,52 @@ localStorage:
   'aurora-2048-skills-enabled': '1' or '0'
 ```
 
+### 11. LLM Training Dataset Export (Added January 6, 2026)
+
+**Export Button** in Game Collection panel:
+```html
+<button id="export-dataset-btn">🧠 Export LLM Dataset</button>
+```
+
+**Features**:
+- Exports game collection to JSONL format for fine-tuning
+- Filters games with score > 1000 for quality training data
+- Generates two files:
+  - `2048-training-dataset-YYYY-MM-DD.jsonl` - Training examples in OpenAI chat format
+  - `2048-dataset-metadata-YYYY-MM-DD.json` - Statistics and usage instructions
+- Compatible with OpenAI fine-tuning API and Azure OpenAI Studio
+- Each move becomes a training example: board state → move decision
+
+**Export Format**:
+```jsonl
+{"messages": [{"role": "system", "content": "..."}, {"role": "user", "content": "Board:\n..."}, {"role": "assistant", "content": "up"}]}
+{"messages": [{"role": "system", "content": "..."}, {"role": "user", "content": "Board:\n..."}, {"role": "assistant", "content": "right"}]}
+```
+
+**Use Cases**:
+- Fine-tune GPT-3.5-turbo or GPT-4 to play 2048
+- Create custom AI models based on successful gameplay
+- Transfer playing style to new models
+- Research and experimentation with LLM game-playing
+
+**Implementation**:
+```javascript
+function exportLLMDataset() {
+  // Filter quality games (score > 1000)
+  // Convert moves to chat completion format
+  // Generate JSONL and metadata files
+  // Download both files
+}
+```
+
 ## Code Statistics
 
-- **Lines Added**: ~450
-- **New Functions**: 8
+- **Lines Added**: ~600 (including LLM export)
+- **New Functions**: 9 (added exportLLMDataset)
 - **Modified Functions**: 3
-- **UI Elements**: 2 (toggle + status)
+- **UI Elements**: 3 (toggle + status + export button)
 - **Configuration Objects**: 3 (skills, schema, functions)
-- **Documentation**: 1,200+ lines across 3 files
+- **Documentation**: 1,400+ lines across 4+ files
 
 ## Architecture Overview
 

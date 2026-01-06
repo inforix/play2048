@@ -195,9 +195,24 @@ console.log('Full response:', JSON.stringify(data, null, 2));
 
 1. **Play Multiple Games**: Build up game collection
 2. **Learn Strategy**: Use "📚 Learn Strategy" button
-3. **Compare Performance**: Skills vs No-Skills vs Expectimax
-4. **Tune Settings**: Experiment with temperature, prompts
-5. **Share Results**: Report win rates and insights
+3. **Export Training Data**: Use "🧠 Export LLM Dataset" to create fine-tuning data
+4. **Compare Performance**: Skills vs No-Skills vs Expectimax
+5. **Tune Settings**: Experiment with temperature, prompts
+6. **Share Results**: Report win rates and insights
+
+### Fine-Tuning Your Own Model:
+
+1. Play 20+ games to build collection (aim for high scores)
+2. Click **"🧠 Export LLM Dataset"** in Game Collection panel
+3. Download `2048-training-dataset-YYYY-MM-DD.jsonl` and metadata
+4. Upload to OpenAI fine-tuning API or Azure OpenAI Studio:
+   ```bash
+   # OpenAI CLI example
+   openai api fine_tunes.create \
+     -t 2048-training-dataset-2026-01-06.jsonl \
+     -m gpt-3.5-turbo
+   ```
+5. Use your fine-tuned model to play 2048 with your learned strategy!
 
 ### Document Your Results:
 
