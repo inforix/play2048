@@ -1,6 +1,71 @@
 # macOS
 .DS_Store
 
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment (uv managed)
+.venv/
+venv/
+ENV/
+env/
+
+# uv specific
+uv.lock
+
+# PyTorch
+*.pth
+*.pt
+!checkpoints/*.pth
+!checkpoints/*.pt
+
+# Data
+data/raw/*.jsonl
+data/raw/*.json
+data/processed/*.pt
+data/augmented/*.pt
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+!data/augmented/.gitkeep
+
+# Results & Logs
+results/training_curves/*.png
+results/training_curves/*.pdf
+results/game_simulations/*.json
+results/*.csv
+*.log
+
+# TensorBoard
+runs/
+logs/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
 # Logs
 *.log
 npm-debug.log*
@@ -20,3 +85,12 @@ node_modules/
 # Editor
 .vscode/
 .idea/
+*.swp
+*.swo
+*~
+
+# Temporary
+tmp/
+temp/
+*.tmp
+
