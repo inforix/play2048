@@ -589,6 +589,7 @@
           <select id="ai-model" class="ghost" style="padding: 8px 12px; background: transparent; color: var(--text); border: 1px solid var(--accent); border-radius: 8px; cursor: pointer; font-size: 14px; display: none;">
             <option value="gpt-5.2">Azure GPT-5.2</option>
             <option value="gpt-5.2-chat">Azure GPT-5.2-Chat</option>
+            <option value="gpt-4-2048">Azure GPT-4-2048 (Fine-tuned)</option>
             <option value="DeepSeek-V3.2">Azure DeepSeek-V3.2</option>
             <option value="openai-gpt-5.2">OpenAI GPT-5.2</option>
           </select>
@@ -705,6 +706,12 @@
       'gpt-5.2-chat': {
         endpoint: 'https://maritimeai-resource.openai.azure.com',
         deployment: 'gpt-5.2-chat',
+        apiVersion: '2025-03-01-preview',
+        type: 'azure'
+      },
+      'gpt-4-2048': {
+        endpoint: 'https://maritimeai-resource.openai.azure.com',
+        deployment: 'gpt-4-2048',
         apiVersion: '2025-03-01-preview',
         type: 'azure'
       },
