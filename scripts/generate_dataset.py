@@ -20,6 +20,60 @@ import copy
 from tqdm import tqdm
 
 
+# ========== FAST BOARD OPERATIONS (for AI evaluation) ==========
+
+def _process_line_fast(line: np.ndarray) -> Tuple[np.ndarray, int]:
+    """Process a single line (merge and compact tiles). Returns (new_line, score_gain)."""
+    non_zero = line[line != 0]
+    merged = []
+    score_gain = 0
+    i = 0
+    
+    while i < len(non_zero):
+        if i + 1 < len(non_zero) and non_zero[i] == non_zero[i + 1]:
+            merged_value = non_zero[i] * 2
+            merged.append(merged_value)
+            score_gain += merged_value
+            i += 2
+        else:
+            merged.append(non_zero[i])
+            i += 1
+    
+    result = np.array(merged + [0] * (4 - len(merged)), dtype=np.int32)
+    return result, score_gain
+
+
+def simulate_move_fast(board: np.ndarray, direction: str) -> Tuple[np.ndarray, bool]:
+    """Fast board move simulation without game state. Returns (new_board, moved)."""
+    new_board = board.copy()
+    moved = False
+    
+    if direction in ['left', 'right']:
+        for row_idx in range(4):
+            row = new_board[row_idx, :].copy()
+            new_row, _ = _process_line_fast(row if direction == 'left' else row[::-1])
+            
+            if direction == 'right':
+                new_row = new_row[::-1]
+            
+            if not np.array_equal(new_board[row_idx, :], new_row):
+                new_board[row_idx, :] = new_row
+                moved = True
+    else:
+        for col_idx in range(4):
+            col = new_board[:, col_idx].copy()
+            new_col, _ = _process_line_fast(col if direction == 'up' else col[::-1])
+            
+            if direction == 'down':
+                new_col = new_col[::-1]
+            
+            if not np.array_equal(new_board[:, col_idx], new_col):
+                new_board[:, col_idx] = new_col
+                moved = True
+    
+    return new_board, moved
+
+
 class Game2048:
     """2048 game logic implementation."""
     
@@ -63,7 +117,7 @@ class Game2048:
             self.move_history.append({
                 'board': board_before.tolist(),
                 'direction': direction,
-                'score': score_before
+                'score': int(score_before)
             })
             
             # Add new tile after successful move
@@ -197,28 +251,32 @@ class ExpectimaxAI:
         [4**0,  4**1,  4**2,  4**3]
     ], dtype=np.float64)
     
-    def __init__(self, depth: int = 4):
+    def __init__(self, depth: int = 4, use_cache: bool = True):
         self.depth = depth
+        self.use_cache = use_cache
         self.nodes_evaluated = 0
+        self.cache_hits = 0
+        self._eval_cache = {}  # Transposition table
     
     def get_best_move(self, game: Game2048) -> Optional[str]:
         """Get the best move using Expectimax algorithm."""
         self.nodes_evaluated = 0
+        self.cache_hits = 0
+        if self.use_cache:
+            self._eval_cache.clear()  # Clear cache for new move decision
         
         directions = ['up', 'down', 'left', 'right']
         best_move = None
         best_score = -float('inf')
         
+        board = game.board
         for direction in directions:
-            game_copy = game.clone()
-            if not game_copy.is_move_valid(direction):
+            new_board, moved = simulate_move_fast(board, direction)
+            if not moved:
                 continue
             
-            # Simulate the move
-            game_copy.move(direction)
-            
             # Evaluate the resulting state
-            score = self._expectimax_value(game_copy, self.depth - 1, is_player_turn=False)
+            score = self._expectimax_value_fast(new_board, self.depth - 1, is_player_turn=False)
             
             if score > best_score:
                 best_score = score
@@ -226,13 +284,21 @@ class ExpectimaxAI:
         
         return best_move
     
-    def _expectimax_value(self, game: Game2048, depth: int, is_player_turn: bool) -> float:
-        """Expectimax recursive evaluation."""
+    def _expectimax_value_fast(self, board: np.ndarray, depth: int, is_player_turn: bool) -> float:
+        """Optimized expectimax using board-only operations and caching."""
         self.nodes_evaluated += 1
         
-        # Terminal conditions
-        if depth == 0 or game.game_over:
-            return self._evaluate_board(game)
+        # Check cache
+        if self.use_cache and depth > 0:
+            cache_key = (board.tobytes(), depth, is_player_turn)
+            if cache_key in self._eval_cache:
+                self.cache_hits += 1
+                return self._eval_cache[cache_key]
+        
+        # Terminal condition
+        if depth == 0:
+            result = self._evaluate_board_fast(board)
+            return result
         
         if is_player_turn:
             # Maximize over possible moves
@@ -240,64 +306,64 @@ class ExpectimaxAI:
             any_moved = False
             
             for direction in ['up', 'down', 'left', 'right']:
-                game_copy = game.clone()
-                if not game_copy.is_move_valid(direction):
+                new_board, moved = simulate_move_fast(board, direction)
+                if not moved:
                     continue
                 
                 any_moved = True
-                game_copy.move(direction)
-                score = self._expectimax_value(game_copy, depth - 1, is_player_turn=False)
+                score = self._expectimax_value_fast(new_board, depth - 1, is_player_turn=False)
                 max_score = max(max_score, score)
             
-            return max_score if any_moved else self._evaluate_board(game)
-        
+            result = max_score if any_moved else self._evaluate_board_fast(board)
         else:
             # Chance node - expected value over random tile placements
-            empty_cells = list(zip(*np.where(game.board == 0)))
+            empty_cells = list(zip(*np.where(board == 0)))
             
             if not empty_cells:
-                return self._expectimax_value(game, depth - 1, is_player_turn=True)
-            
-            # Sample a subset of empty cells for efficiency
-            sample_size = min(len(empty_cells), 4)
-            sampled_cells = random.sample(empty_cells, sample_size)
-            
-            expected_value = 0.0
-            for row, col in sampled_cells:
-                # Try placing a 2 (90% probability)
-                game_copy = game.clone()
-                game_copy.board[row, col] = 2
-                expected_value += 0.9 * self._expectimax_value(game_copy, depth - 1, is_player_turn=True)
+                result = self._expectimax_value_fast(board, depth - 1, is_player_turn=True)
+            else:
+                # Sample a subset of empty cells for efficiency
+                sample_size = min(len(empty_cells), 4)
+                sampled_cells = random.sample(empty_cells, sample_size)
                 
-                # Try placing a 4 (10% probability)
-                game_copy = game.clone()
-                game_copy.board[row, col] = 4
-                expected_value += 0.1 * self._expectimax_value(game_copy, depth - 1, is_player_turn=True)
-            
-            return expected_value / sample_size
+                expected_value = 0.0
+                for row, col in sampled_cells:
+                    # Try placing a 2 (90% probability)
+                    board_2 = board.copy()
+                    board_2[row, col] = 2
+                    expected_value += 0.9 * self._expectimax_value_fast(board_2, depth - 1, is_player_turn=True)
+                    
+                    # Try placing a 4 (10% probability)
+                    board_4 = board.copy()
+                    board_4[row, col] = 4
+                    expected_value += 0.1 * self._expectimax_value_fast(board_4, depth - 1, is_player_turn=True)
+                
+                result = expected_value / sample_size
+        
+        # Store in cache
+        if self.use_cache and depth > 0:
+            self._eval_cache[cache_key] = result
+        
+        return result
     
-    def _evaluate_board(self, game: Game2048) -> float:
+    def _evaluate_board_fast(self, board: np.ndarray) -> float:
         """
-        Comprehensive board evaluation function.
+        Optimized board evaluation function.
         Based on the HTML implementation's evaluateBoardExpectimax.
         """
-        board = game.board
-        score = 0.0
-        
-        # 1. Weighted position score (snake pattern)
-        position_score = np.sum(board * self.WEIGHT_MATRIX)
-        score += position_score
+        # 1. Weighted position score (snake pattern) - vectorized
+        score = np.sum(board * self.WEIGHT_MATRIX)
         
         # 2. Empty tiles bonus (critical for survival)
-        empty_tiles = np.sum(board == 0)
+        empty_tiles = np.count_nonzero(board == 0)
         score += empty_tiles * 50000
         
         # 3. Monotonicity bonus
-        monotonicity = self._calculate_monotonicity(board)
+        monotonicity = self._calculate_monotonicity_fast(board)
         score += monotonicity * 10000
         
         # 4. Smoothness bonus
-        smoothness = self._calculate_smoothness(board)
+        smoothness = self._calculate_smoothness_fast(board)
         score += smoothness * 1000
         
         # 5. Max tile in corner bonus
@@ -307,52 +373,46 @@ class ExpectimaxAI:
         
         return score
     
-    def _calculate_monotonicity(self, board: np.ndarray) -> float:
-        """Calculate monotonicity score (tiles should increase toward corner)."""
+    def _calculate_monotonicity_fast(self, board: np.ndarray) -> float:
+        """Optimized monotonicity calculation using vectorized operations."""
         mono = 0.0
         
-        # Check rows
-        for row in range(Game2048.SIZE):
-            increasing = 0
-            decreasing = 0
-            for col in range(Game2048.SIZE - 1):
-                if board[row, col] <= board[row, col + 1]:
-                    increasing += 1
-                if board[row, col] >= board[row, col + 1]:
-                    decreasing += 1
+        # Check rows - vectorized
+        for row in range(4):
+            row_data = board[row, :]
+            increasing = np.sum(row_data[:-1] <= row_data[1:])
+            decreasing = np.sum(row_data[:-1] >= row_data[1:])
             mono += max(increasing, decreasing)
         
-        # Check columns
-        for col in range(Game2048.SIZE):
-            increasing = 0
-            decreasing = 0
-            for row in range(Game2048.SIZE - 1):
-                if board[row, col] <= board[row + 1, col]:
-                    increasing += 1
-                if board[row, col] >= board[row + 1, col]:
-                    decreasing += 1
+        # Check columns - vectorized
+        for col in range(4):
+            col_data = board[:, col]
+            increasing = np.sum(col_data[:-1] <= col_data[1:])
+            decreasing = np.sum(col_data[:-1] >= col_data[1:])
             mono += max(increasing, decreasing)
         
         return mono
     
-    def _calculate_smoothness(self, board: np.ndarray) -> float:
-        """Calculate smoothness score (adjacent tiles should be similar)."""
+    def _calculate_smoothness_fast(self, board: np.ndarray) -> float:
+        """Optimized smoothness calculation."""
         smoothness = 0.0
         
-        for row in range(Game2048.SIZE):
-            for col in range(Game2048.SIZE):
-                if board[row, col] == 0:
-                    continue
-                
-                val = np.log2(board[row, col])
-                
-                # Check right neighbor
-                if col < Game2048.SIZE - 1 and board[row, col + 1] != 0:
-                    smoothness -= abs(val - np.log2(board[row, col + 1]))
-                
-                # Check bottom neighbor
-                if row < Game2048.SIZE - 1 and board[row + 1, col] != 0:
-                    smoothness -= abs(val - np.log2(board[row + 1, col]))
+        # Pre-compute log values for non-zero tiles
+        log_board = np.zeros_like(board, dtype=np.float64)
+        mask = board > 0
+        log_board[mask] = np.log2(board[mask])
+        
+        # Check horizontal neighbors
+        for row in range(4):
+            for col in range(3):
+                if board[row, col] > 0 and board[row, col + 1] > 0:
+                    smoothness -= abs(log_board[row, col] - log_board[row, col + 1])
+        
+        # Check vertical neighbors
+        for row in range(3):
+            for col in range(4):
+                if board[row, col] > 0 and board[row + 1, col] > 0:
+                    smoothness -= abs(log_board[row, col] - log_board[row + 1, col])
         
         return smoothness
 
@@ -364,6 +424,8 @@ def play_game(ai: ExpectimaxAI, verbose: bool = False) -> Dict:
     """
     game = Game2048()
     move_count = 0
+    total_nodes = 0
+    total_cache_hits = 0
     
     while not game.game_over and move_count < 5000:  # Safety limit
         best_move = ai.get_best_move(game)
@@ -372,18 +434,27 @@ def play_game(ai: ExpectimaxAI, verbose: bool = False) -> Dict:
             # No valid moves
             break
         
+        total_nodes += ai.nodes_evaluated
+        total_cache_hits += ai.cache_hits
+        
         success = game.move(best_move)
         if success:
             move_count += 1
             
             if verbose and move_count % 50 == 0:
-                print(f"Move {move_count}: Score {game.score}, Max tile {game.get_max_tile()}")
+                cache_rate = (total_cache_hits / total_nodes * 100) if total_nodes > 0 else 0
+                print(f"Move {move_count}: Score {game.score}, Max tile {game.get_max_tile()}, "
+                      f"Cache hit rate: {cache_rate:.1f}%")
+    
+    if verbose:
+        cache_rate = (total_cache_hits / total_nodes * 100) if total_nodes > 0 else 0
+        print(f"Game finished: {total_nodes} nodes evaluated, {total_cache_hits} cache hits ({cache_rate:.1f}%)")
     
     return {
         'totalMoves': len(game.move_history),
-        'finalScore': game.score,
-        'maxTile': game.get_max_tile(),
-        'won': game.has_won(),
+        'finalScore': int(game.score),
+        'maxTile': int(game.get_max_tile()),
+        'won': bool(game.has_won()),
         'finalBoard': game.board.tolist(),
         'moves': game.move_history,
         'timestamp': datetime.now().isoformat()
