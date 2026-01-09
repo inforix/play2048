@@ -94,3 +94,4 @@ tmp/
 temp/
 *.tmp
 
+scripts/data/training_games.jsonl
