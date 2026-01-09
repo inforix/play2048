@@ -295,7 +295,7 @@ def main():
     
     # Load model
     logger.info(f"Loading model from: {args.checkpoint}")
-    checkpoint = torch.load(args.checkpoint, map_location=device)
+    checkpoint = torch.load(args.checkpoint, map_location=device, weights_only=False)
     
     # Create model
     if args.dual_head:

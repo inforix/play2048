@@ -53,7 +53,8 @@ def train_one_epoch(
     metrics_tracker: MetricsTracker,
     epoch: int,
     total_epochs: int,
-    gradient_clip: float = 1.0
+    gradient_clip: float = 1.0,
+    is_dual_head: bool = False
 ) -> dict:
     """
     Train for one epoch.
@@ -68,6 +69,7 @@ def train_one_epoch(
         epoch: Current epoch number
         total_epochs: Total number of epochs
         gradient_clip: Maximum gradient norm (0 to disable)
+        is_dual_head: Whether model is dual-head (returns policy and value)
         
     Returns:
         Dictionary with training metrics
@@ -84,7 +86,12 @@ def train_one_epoch(
         
         # Forward pass
         optimizer.zero_grad()
-        logits = model(boards)
+        
+        if is_dual_head:
+            logits, value = model(boards)
+        else:
+            logits = model(boards)
+        
         loss = criterion(logits, actions)
         
         # Backward pass
@@ -116,7 +123,8 @@ def validate(
     device: str,
     metrics_tracker: MetricsTracker,
     epoch: int,
-    total_epochs: int
+    total_epochs: int,
+    is_dual_head: bool = False
 ) -> dict:
     """
     Validate the model.
@@ -129,6 +137,7 @@ def validate(
         metrics_tracker: Metrics tracker
         epoch: Current epoch number
         total_epochs: Total number of epochs
+        is_dual_head: Whether model is dual-head (returns policy and value)
         
     Returns:
         Dictionary with validation metrics
@@ -145,7 +154,11 @@ def validate(
             actions = batch['action'].to(device)
             
             # Forward pass
-            logits = model(boards)
+            if is_dual_head:
+                logits, value = model(boards)
+            else:
+                logits = model(boards)
+            
             loss = criterion(logits, actions)
             
             # Update metrics
@@ -316,13 +329,15 @@ def train(args):
         train_metrics = train_one_epoch(
             model, train_loader, criterion, optimizer,
             device, train_tracker, epoch + 1, args.epochs,
-            gradient_clip=args.gradient_clip
+            gradient_clip=args.gradient_clip,
+            is_dual_head=args.dual_head
         )
         
         # Validate
         val_metrics = validate(
             model, val_loader, criterion,
-            device, val_tracker, epoch + 1, args.epochs
+            device, val_tracker, epoch + 1, args.epochs,
+            is_dual_head=args.dual_head
         )
         
         # Learning rate step
