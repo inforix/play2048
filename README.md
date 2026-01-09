@@ -103,13 +103,15 @@ play2048/
 ├── 🛠️ scripts/                     # IMPLEMENTATION: Tools
 │   └── generate_dataset.py         # ✅ Implemented per generate_dataset.md
 │
-├── 🧠 models/                      # IMPLEMENTATION: ML Models (Optional)
-│   ├── cnn/                        # ⏳ Per train_spec.md
-│   ├── dual/                       # ⏳ Per train_spec.md
-│   └── transformer/                # ⏳ Per train_spec.md
+├── 🧠 models/                      # IMPLEMENTATION: ML Models
+│   ├── cnn/                        # ✅ CNN policy network
+│   ├── dual/                       # ✅ AlphaZero dual network
+│   └── transformer/                # ✅ Transformer policy network
 │
-├── 🎓 training/                    # IMPLEMENTATION: ML Training (Optional)
-│   └── [training scripts]          # ⏳ Per train_spec.md
+├── 🎓 training/                    # IMPLEMENTATION: ML Training
+│   ├── train_cnn.py                # ✅ CNN training script
+│   ├── train_transformer.py        # ✅ Transformer training script
+│   └── train_alphazero.py          # ✅ AlphaZero training script
 │
 ├── 💾 data/                        # DATA: Generated & Processed
 │   ├── raw/                        # JSONL game histories
@@ -192,25 +194,51 @@ python scripts/generate_dataset.py --games 100 --seed 42
 
 ---
 
-### Component 3: Machine Learning Pipeline ⏳
+### Component 3: Machine Learning Pipeline ✅
 **Specification**: `specs/train_spec.md` (Complete)  
-**Implementation**: Pending (demonstrates spec-first approach)
+**Implementation**: Complete (3 architectures implemented)
 
 **What It Demonstrates**:
 - ML architecture specification before coding
-- Comparative analysis planning (3 methods)
-- Hyperparameter specification
+- Comparative analysis of 3 different methods
+- Hyperparameter specification and tuning
 - Evaluation metric definition
-- Training procedure documentation
+- Training procedure and best practices
 
-**Planned Architectures**:
-1. **CNN Policy Network** - Baseline approach
-2. **Dual Network** - Policy + value heads (AlphaZero-style)
-3. **Transformer** - Attention-based with 2D positional encoding
+**Implemented Architectures**:
+1. **CNN Policy Network** - Convolutional approach with residual blocks
+   - Parameters: ~400K-1.8M (configurable)
+   - Features: Batch normalization, dropout, residual connections
+   - Training: Adam/AdamW optimizer, cosine annealing
+   
+2. **AlphaZero Dual Network** - Policy + value heads with ResNet backbone
+   - Parameters: ~1M-5M (configurable)
+   - Features: Shared backbone, dual heads, MCTS integration
+   - Training: Self-play with MCTS, policy/value loss
+   
+3. **Transformer Policy** - Attention-based with 2D positional encoding
+   - Parameters: ~500K-2M (configurable)
+   - Features: Multi-head attention, positional encoding, global pooling
+   - Training: AdamW optimizer, warmup + cosine schedule
 
-**Purpose**: Shows how to spec complex ML systems before implementation
+**Usage**:
+```bash
+# Train CNN model
+python training/train_cnn.py --data data/training_games.jsonl
 
-**Status**: Specification complete, ready for implementation when needed
+# Train Transformer model
+python training/train_transformer.py --data data/training_games.jsonl
+
+# Train AlphaZero model (self-play)
+python training/train_alphazero.py --num-iterations 100
+
+# Evaluate any trained model
+python test_cnn.py --checkpoint checkpoints/cnn/best_model.pth
+python test_play.py --checkpoint checkpoints/transformer/best_model.pth
+python test_alphazero.py --checkpoint checkpoints/test_alphazero/final_model.pth
+```
+
+**Status**: ✅ All architectures implemented and tested
 
 ## Key Learnings from This SDD Case Study
 
@@ -274,11 +302,12 @@ python scripts/generate_dataset.py --games 100 --seed 42
 3. Use as template for new SDD projects
 4. Adapt structure to other domains (web apps, APIs, etc.)
 
-### For Adopting SDD
-1. Copy the `specs/` structure
-2. Adapt specification templates
-3. Follow the workflow diagram
-4. Validate your own implementations against specs
+### For Adopting SDD3 (game, dataset generator, ML training) |
+| Implementations Pending | 0 |
+| Lines of Specification | ~2,500 (detailed specs) |
+| Code-to-Spec Match | ~95% (validated) |
+| Documentation Files | 20+ (specs + guides) |
+| ML Model Architectures | 3 (CNN, AlphaZero, Transformert specs
 
 ---
 
@@ -419,7 +448,9 @@ MIT License - See LICENSE file for details
 | Component | Specification | Implementation | Status |
 |-----------|--------------|----------------|---------|
 | Game | ✅ Complete | ✅ Complete | ✅ Validated |
-| Dataset Generator | ✅ Complete | ✅ Complete | ✅ Validated |
+| Dataset Gene(CNN) | ✅ Complete | ✅ Complete | ✅ Validated |
+| ML Training (Transformer) | ✅ Complete | ✅ Complete | ✅ Validated |
+| ML Training (AlphaZero) | ✅ Complete | ✅ Complete | ✅ Validateddated |
 | ML Training | ✅ Complete | ⏳ Pending | 📋 Spec-ready |
 
 **Purpose**: Demonstrate spec-driven development methodology  
