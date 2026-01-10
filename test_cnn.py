@@ -19,6 +19,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from models.cnn import CNNPolicy, DualCNNPolicy
 from training.utils import get_device
+from training.mcts import MCTS
 
 logging.basicConfig(
     level=logging.INFO,
@@ -156,7 +157,8 @@ def normalize_board(board):
     return board_norm.astype(np.float32)
 
 
-def evaluate_model(model, num_games=100, device='cpu', use_greedy=True, verbose=False):
+def evaluate_model(model, num_games=100, device='cpu', use_greedy=True, use_mcts=False, 
+                   mcts_simulations=50, verbose=False):
     """
     Evaluate model by playing games.
     
@@ -165,12 +167,29 @@ def evaluate_model(model, num_games=100, device='cpu', use_greedy=True, verbose=
         num_games: Number of games to play
         device: Device to run model on
         use_greedy: If True, use greedy policy; otherwise sample from probabilities
+        use_mcts: If True, use MCTS for action selection
+        mcts_simulations: Number of MCTS simulations per move
         verbose: If True, print detailed game info
         
     Returns:
         Dictionary with evaluation metrics
     """
     model.eval()
+    
+    # Create MCTS if requested
+    mcts = None
+    if use_mcts:
+        # Check if model supports dual-head output
+        if not isinstance(model, DualCNNPolicy):
+            raise ValueError("MCTS requires a dual-head model (policy + value)")
+        mcts = MCTS(
+            model=model,
+            device=device,
+            num_simulations=mcts_simulations,
+            c_puct=1.4,
+            dirichlet_alpha=0.3,
+            dirichlet_epsilon=0.0  # No noise during evaluation
+        )
     
     scores = []
     max_tiles = []
@@ -183,23 +202,29 @@ def evaluate_model(model, num_games=100, device='cpu', use_greedy=True, verbose=
         invalid_moves = 0
         
         while not game.game_over and moves < 10000:
-            # Prepare input
-            board_norm = normalize_board(board)
-            board_tensor = torch.from_numpy(board_norm).unsqueeze(0).unsqueeze(0).to(device)
-            
             # Get action from model
-            with torch.no_grad():
-                if isinstance(model, DualCNNPolicy):
-                    logits, value = model(board_tensor)
-                else:
-                    logits = model(board_tensor)
+            if use_mcts:
+                # Use MCTS for action selection
+                action_probs = mcts.search(board, add_noise=False)
+                action = np.argmax(action_probs)
+            else:
+                # Prepare input
+                board_norm = normalize_board(board)
+                board_tensor = torch.from_numpy(board_norm).unsqueeze(0).unsqueeze(0).to(device)
                 
-                probs = torch.softmax(logits, dim=-1)
-                
-                if use_greedy:
-                    action = probs.argmax(dim=-1).item()
-                else:
-                    action = torch.multinomial(probs, 1).item()
+                # Get action from model
+                with torch.no_grad():
+                    if isinstance(model, DualCNNPolicy):
+                        logits, value = model(board_tensor)
+                    else:
+                        logits = model(board_tensor)
+                    
+                    probs = torch.softmax(logits, dim=-1)
+                    
+                    if use_greedy:
+                        action = probs.argmax(dim=-1).item()
+                    else:
+                        action = torch.multinomial(probs, 1).item()
             
             # Execute move
             reward, done, valid = game.move(action)
@@ -272,6 +297,10 @@ def main():
                         help='Use greedy policy (default: True)')
     parser.add_argument('--stochastic', dest='greedy', action='store_false',
                         help='Sample from action probabilities')
+    parser.add_argument('--mcts', action='store_true',
+                        help='Use MCTS for action selection (requires --dual-head)')
+    parser.add_argument('--mcts-simulations', type=int, default=50,
+                        help='Number of MCTS simulations per move (default: 50)')
     parser.add_argument('--verbose', action='store_true',
                         help='Print detailed game info')
     
@@ -318,9 +347,17 @@ def main():
     model = model.to(device)
     logger.info(f"Model loaded successfully ({model.get_num_params():,} parameters)")
     
+    # Check MCTS requirements
+    if args.mcts and not args.dual_head:
+        logger.error("MCTS requires --dual-head model")
+        return
+    
     # Evaluate
     logger.info(f"\nEvaluating on {args.num_games} games...")
-    logger.info(f"Policy: {'Greedy' if args.greedy else 'Stochastic'}")
+    if args.mcts:
+        logger.info(f"Policy: MCTS with {args.mcts_simulations} simulations per move")
+    else:
+        logger.info(f"Policy: {'Greedy' if args.greedy else 'Stochastic'}")
     logger.info("=" * 70)
     
     results = evaluate_model(
@@ -328,6 +365,8 @@ def main():
         num_games=args.num_games,
         device=device,
         use_greedy=args.greedy,
+        use_mcts=args.mcts,
+        mcts_simulations=args.mcts_simulations,
         verbose=args.verbose
     )
     
