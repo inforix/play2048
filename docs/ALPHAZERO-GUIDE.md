@@ -145,7 +145,7 @@ from training.mcts import MCTS
 import numpy as np
 
 # 加载模型
-device = torch.device('mps')  # 或 'cpu', 'cuda'
+device = torch.device('cuda')  # 或 'cpu', 'cuda'
 model = AlphaZeroNetwork(num_blocks=4, channels=256)
 checkpoint = torch.load('checkpoints/alphazero/final_model.pth', weights_only=False)
 model.load_state_dict(checkpoint['best_model'])
