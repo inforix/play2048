@@ -539,13 +539,6 @@ def main():
     
     # Play games
     games = []
-    stats = {
-        'total_games': args.games,
-        'wins': 0,
-        'total_score': 0,
-        'total_moves': 0,
-        'max_tiles': []
-    }
     
     for i in tqdm(range(args.games), desc="Playing games"):
         if args.verbose:
@@ -554,20 +547,30 @@ def main():
         game_data = play_game(ai, verbose=args.verbose)
         games.append(game_data)
         
-        # Update statistics
-        if game_data['won']:
-            stats['wins'] += 1
-        stats['total_score'] += game_data['finalScore']
-        stats['total_moves'] += game_data['totalMoves']
-        stats['max_tiles'].append(game_data['maxTile'])
-        
         if args.verbose:
             print(f"✓ Finished: Score {game_data['finalScore']}, "
                   f"Max tile {game_data['maxTile']}, "
                   f"Moves {game_data['totalMoves']}")
     
+    total_played = len(games)
+    winning_games = [g for g in games if g['maxTile'] >= 2048]
+    kept_count = len(winning_games)
+    print(f"\n🎯 Filtering to wins (max tile >= 2048): kept {kept_count} of {total_played} games.")
+    if kept_count == 0:
+        print("No winning games generated; nothing to save.")
+        return
+    
+    games = winning_games
+    stats = {
+        'total_games': kept_count,
+        'wins': sum(1 for g in games if g['won']),
+        'total_score': sum(g['finalScore'] for g in games),
+        'total_moves': sum(g['totalMoves'] for g in games),
+        'max_tiles': [g['maxTile'] for g in games]
+    }
+    
     # Save dataset
-    print(f"\n💾 Saving dataset to {args.output}...")
+    print(f"\n💾 Saving {kept_count} winning games to {args.output}...")
     if args.output.endswith('.jsonl'):
         save_games_jsonl(games, args.output)
     else:
