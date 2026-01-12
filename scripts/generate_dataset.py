@@ -11,12 +11,16 @@ Usage:
 """
 
 import argparse
-import json
-import random
-import numpy as np
-from datetime import datetime
-from typing import List, Tuple, Optional, Dict
 import copy
+import json
+import multiprocessing as mp
+import os
+import random
+from datetime import datetime
+from functools import partial
+from typing import List, Tuple, Optional, Dict
+
+import numpy as np
 from tqdm import tqdm
 
 
@@ -478,7 +482,36 @@ def save_games_json(games: List[Dict], output_path: str):
         json.dump(games, f, indent=2)
 
 
+def _seed_rng(seed_value: Optional[int]):
+    """Seed both Python's and NumPy's RNGs when a seed is provided."""
+    if seed_value is None:
+        return
+    random.seed(seed_value)
+    np.random.seed(seed_value)
+
+
+def _get_mp_context():
+    """Prefer fork context when available to avoid semaphore limits on macOS sandboxes."""
+    try:
+        return mp.get_context('fork')
+    except ValueError:
+        return mp.get_context()
+
+
+def _play_single_game(game_index: int, depth: int, base_seed: Optional[int], verbose: bool = False) -> Dict:
+    """
+    Play one game with an optional deterministic seed derived from base_seed + game_index.
+    Used for parallel execution where each game runs in its own process.
+    """
+    if base_seed is not None:
+        _seed_rng(base_seed + game_index)
+    ai = ExpectimaxAI(depth=depth)
+    return play_game(ai, verbose=verbose)
+
+
 def main():
+    default_workers = os.cpu_count() or 1
+
     parser = argparse.ArgumentParser(
         description='Generate 2048 training dataset using Expectimax AI',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
@@ -517,43 +550,64 @@ def main():
         default=None,
         help='Random seed for reproducibility'
     )
+
+    parser.add_argument(
+        '--workers', '-w',
+        type=int,
+        default=default_workers,
+        help='Number of worker processes for parallel generation (set to 1 to run sequentially)'
+    )
     
     args = parser.parse_args()
     
     # Set random seed if specified
-    if args.seed is not None:
-        random.seed(args.seed)
-        np.random.seed(args.seed)
+    _seed_rng(args.seed)
     
     # Create output directory if needed
-    import os
     os.makedirs(os.path.dirname(args.output) or '.', exist_ok=True)
+
+    workers = max(1, args.workers)
+    workers = min(workers, args.games) if args.games > 0 else 1
+    parallel_mode = workers > 1
     
     print(f"🎮 2048 Dataset Generator")
     print(f"=" * 60)
     print(f"Games to play: {args.games}")
     print(f"Search depth: {args.depth}")
+    print(f"Workers: {workers}")
     print(f"Output: {args.output}")
     print(f"=" * 60)
     print()
     
-    # Initialize AI
-    ai = ExpectimaxAI(depth=args.depth)
-    
-    # Play games
-    games = []
-    
-    for i in tqdm(range(args.games), desc="Playing games"):
+    games: List[Dict] = []
+    if parallel_mode:
         if args.verbose:
-            print(f"\n🎯 Game {i + 1}/{args.games}")
-        
-        game_data = play_game(ai, verbose=args.verbose)
-        games.append(game_data)
-        
-        if args.verbose:
-            print(f"✓ Finished: Score {game_data['finalScore']}, "
-                  f"Max tile {game_data['maxTile']}, "
-                  f"Moves {game_data['totalMoves']}")
+            print("Verbose per-game logging is disabled in parallel mode to keep output readable.")
+        play_fn = partial(_play_single_game, depth=args.depth, base_seed=args.seed, verbose=False)
+        # Use a modest chunk size to reduce task dispatch overhead without starving workers.
+        chunk_size = max(1, args.games // (workers * 4)) if args.games else 1
+        ctx = _get_mp_context()
+        with ctx.Pool(processes=workers) as pool:
+            for game_data in tqdm(
+                pool.imap(play_fn, range(args.games), chunksize=chunk_size),
+                total=args.games,
+                desc="Playing games"
+            ):
+                games.append(game_data)
+    else:
+        # Initialize AI once in sequential mode to preserve cache reuse across games.
+        ai = ExpectimaxAI(depth=args.depth)
+        for i in tqdm(range(args.games), desc="Playing games"):
+            if args.verbose:
+                print(f"\n🎯 Game {i + 1}/{args.games}")
+            
+            game_data = play_game(ai, verbose=args.verbose)
+            games.append(game_data)
+            
+            if args.verbose:
+                print(f"✓ Finished: Score {game_data['finalScore']}, "
+                      f"Max tile {game_data['maxTile']}, "
+                      f"Moves {game_data['totalMoves']}")
     
     total_played = len(games)
     winning_games = [g for g in games if g['maxTile'] >= 2048]
