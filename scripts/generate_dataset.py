@@ -257,6 +257,8 @@ class ExpectimaxAI:
         self.nodes_evaluated = 0
         self.cache_hits = 0
         self._eval_cache = {}  # Transposition table
+        self._board_eval_cache = {}
+        self._max_eval_cache_size = 200000
     
     def get_best_move(self, game: Game2048) -> Optional[str]:
         """Get the best move using Expectimax algorithm."""
@@ -287,17 +289,20 @@ class ExpectimaxAI:
     def _expectimax_value_fast(self, board: np.ndarray, depth: int, is_player_turn: bool) -> float:
         """Optimized expectimax using board-only operations and caching."""
         self.nodes_evaluated += 1
+        board_bytes = board.tobytes() if self.use_cache else None
+        cache_key = None
         
         # Check cache
         if self.use_cache and depth > 0:
-            cache_key = (board.tobytes(), depth, is_player_turn)
-            if cache_key in self._eval_cache:
+            cache_key = (board_bytes, depth, is_player_turn)
+            cached = self._eval_cache.get(cache_key)
+            if cached is not None:
                 self.cache_hits += 1
-                return self._eval_cache[cache_key]
+                return cached
         
         # Terminal condition
         if depth == 0:
-            result = self._evaluate_board_fast(board)
+            result = self._evaluate_board_fast(board, board_bytes)
             return result
         
         if is_player_turn:
@@ -314,7 +319,7 @@ class ExpectimaxAI:
                 score = self._expectimax_value_fast(new_board, depth - 1, is_player_turn=False)
                 max_score = max(max_score, score)
             
-            result = max_score if any_moved else self._evaluate_board_fast(board)
+            result = max_score if any_moved else self._evaluate_board_fast(board, board_bytes)
         else:
             # Chance node - expected value over random tile placements
             empty_cells = list(zip(*np.where(board == 0)))
@@ -346,11 +351,16 @@ class ExpectimaxAI:
         
         return result
     
-    def _evaluate_board_fast(self, board: np.ndarray) -> float:
+    def _evaluate_board_fast(self, board: np.ndarray, board_bytes: Optional[bytes] = None) -> float:
         """
         Optimized board evaluation function.
         Based on the HTML implementation's evaluateBoardExpectimax.
         """
+        if self.use_cache and board_bytes is not None:
+            cached_eval = self._board_eval_cache.get(board_bytes)
+            if cached_eval is not None:
+                return cached_eval
+        
         # 1. Weighted position score (snake pattern) - vectorized
         score = np.sum(board * self.WEIGHT_MATRIX)
         
@@ -371,49 +381,42 @@ class ExpectimaxAI:
         if board[0, 3] == max_tile:  # Top-right corner
             score += max_tile * 10000
         
+        if self.use_cache and board_bytes is not None:
+            if len(self._board_eval_cache) >= self._max_eval_cache_size:
+                self._board_eval_cache.clear()
+            self._board_eval_cache[board_bytes] = score
+        
         return score
     
     def _calculate_monotonicity_fast(self, board: np.ndarray) -> float:
         """Optimized monotonicity calculation using vectorized operations."""
-        mono = 0.0
+        row_pairs = board[:, :-1]
+        row_next = board[:, 1:]
+        row_inc = np.sum(row_pairs <= row_next, axis=1)
+        row_dec = np.sum(row_pairs >= row_next, axis=1)
+        row_mono = np.maximum(row_inc, row_dec)
         
-        # Check rows - vectorized
-        for row in range(4):
-            row_data = board[row, :]
-            increasing = np.sum(row_data[:-1] <= row_data[1:])
-            decreasing = np.sum(row_data[:-1] >= row_data[1:])
-            mono += max(increasing, decreasing)
+        col_pairs = board[:-1, :]
+        col_next = board[1:, :]
+        col_inc = np.sum(col_pairs <= col_next, axis=0)
+        col_dec = np.sum(col_pairs >= col_next, axis=0)
+        col_mono = np.maximum(col_inc, col_dec)
         
-        # Check columns - vectorized
-        for col in range(4):
-            col_data = board[:, col]
-            increasing = np.sum(col_data[:-1] <= col_data[1:])
-            decreasing = np.sum(col_data[:-1] >= col_data[1:])
-            mono += max(increasing, decreasing)
-        
-        return mono
+        return float(np.sum(row_mono) + np.sum(col_mono))
     
     def _calculate_smoothness_fast(self, board: np.ndarray) -> float:
         """Optimized smoothness calculation."""
-        smoothness = 0.0
-        
-        # Pre-compute log values for non-zero tiles
         log_board = np.zeros_like(board, dtype=np.float64)
         mask = board > 0
         log_board[mask] = np.log2(board[mask])
         
-        # Check horizontal neighbors
-        for row in range(4):
-            for col in range(3):
-                if board[row, col] > 0 and board[row, col + 1] > 0:
-                    smoothness -= abs(log_board[row, col] - log_board[row, col + 1])
+        horiz_mask = (board[:, :-1] > 0) & (board[:, 1:] > 0)
+        horiz_diff = np.abs(log_board[:, :-1] - log_board[:, 1:])
         
-        # Check vertical neighbors
-        for row in range(3):
-            for col in range(4):
-                if board[row, col] > 0 and board[row + 1, col] > 0:
-                    smoothness -= abs(log_board[row, col] - log_board[row + 1, col])
+        vert_mask = (board[:-1, :] > 0) & (board[1:, :] > 0)
+        vert_diff = np.abs(log_board[:-1, :] - log_board[1:, :])
         
+        smoothness = -float(horiz_diff[horiz_mask].sum() + vert_diff[vert_mask].sum())
         return smoothness
 
 
