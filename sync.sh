@@ -76,9 +76,7 @@ EXCLUDE_PATTERNS=(
     "*.log"
     
     # Data files (optional - uncomment if too large)
-    # "data/training_games.jsonl"
-    # "data/augmented"
-    # "data/processed"
+    "data"
     
     # Node modules (if any)
     "node_modules"
@@ -176,7 +174,7 @@ do_sync() {
     rsync_cmd="$rsync_cmd ./ $remote"
     
     # Show command
-    print_info "Running: rsync -avz --progress --delete [with exclusions] ./ $remote"
+    print_info "Running: rsync -avz --progress [with exclusions] ./ $remote"
     echo ""
     
     # Execute

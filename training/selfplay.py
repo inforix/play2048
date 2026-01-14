@@ -135,23 +135,20 @@ class Game2048:
         Returns:
             (moved, reward) tuple
         """
-        old_board = self.board.copy()
         reward = 0
         
         if action == 0:  # Up
-            self.board, moved = self._slide_up(self.board)
+            self.board, moved, reward = self._slide_up(self.board)
         elif action == 1:  # Down
-            self.board, moved = self._slide_down(self.board)
+            self.board, moved, reward = self._slide_down(self.board)
         elif action == 2:  # Left
-            self.board, moved = self._slide_left(self.board)
+            self.board, moved, reward = self._slide_left(self.board)
         elif action == 3:  # Right
-            self.board, moved = self._slide_right(self.board)
+            self.board, moved, reward = self._slide_right(self.board)
         else:
             return False, 0
         
         if moved:
-            # Calculate reward (score increase)
-            reward = int(np.sum(self.board) - np.sum(old_board))
             self.score += reward
             
             # Add random tile
@@ -164,10 +161,11 @@ class Game2048:
         
         return moved, reward
     
-    def _slide_left(self, board: np.ndarray) -> Tuple[np.ndarray, bool]:
+    def _slide_left(self, board: np.ndarray) -> Tuple[np.ndarray, bool, int]:
         """Slide and merge tiles to the left."""
         new_board = board.copy()
         moved = False
+        merge_score = 0
         
         for i in range(4):
             row = new_board[i, :]
@@ -175,16 +173,16 @@ class Game2048:
             
             # Merge adjacent equal tiles
             merged = []
-            skip = False
-            for j in range(len(non_zero)):
-                if skip:
-                    skip = False
-                    continue
+            j = 0
+            while j < len(non_zero):
                 if j + 1 < len(non_zero) and non_zero[j] == non_zero[j + 1]:
-                    merged.append(non_zero[j] * 2)
-                    skip = True
+                    merged_val = non_zero[j] * 2
+                    merged.append(merged_val)
+                    merge_score += merged_val
+                    j += 2
                 else:
                     merged.append(non_zero[j])
+                    j += 1
             
             # Pad with zeros
             new_row = np.array(merged + [0] * (4 - len(merged)), dtype=np.float32)
@@ -194,38 +192,38 @@ class Game2048:
             
             new_board[i, :] = new_row
         
-        return new_board, moved
+        return new_board, moved, int(merge_score)
     
-    def _slide_right(self, board: np.ndarray) -> Tuple[np.ndarray, bool]:
+    def _slide_right(self, board: np.ndarray) -> Tuple[np.ndarray, bool, int]:
         """Slide and merge tiles to the right."""
         flipped = np.fliplr(board)
-        new_board, moved = self._slide_left(flipped)
-        return np.fliplr(new_board), moved
+        new_board, moved, merge_score = self._slide_left(flipped)
+        return np.fliplr(new_board), moved, merge_score
     
-    def _slide_up(self, board: np.ndarray) -> Tuple[np.ndarray, bool]:
+    def _slide_up(self, board: np.ndarray) -> Tuple[np.ndarray, bool, int]:
         """Slide and merge tiles up."""
         transposed = board.T
-        new_board, moved = self._slide_left(transposed)
-        return new_board.T, moved
+        new_board, moved, merge_score = self._slide_left(transposed)
+        return new_board.T, moved, merge_score
     
-    def _slide_down(self, board: np.ndarray) -> Tuple[np.ndarray, bool]:
+    def _slide_down(self, board: np.ndarray) -> Tuple[np.ndarray, bool, int]:
         """Slide and merge tiles down."""
         transposed = board.T
-        new_board, moved = self._slide_right(transposed)
-        return new_board.T, moved
+        new_board, moved, merge_score = self._slide_right(transposed)
+        return new_board.T, moved, merge_score
     
     def _has_valid_moves(self) -> bool:
         """Check if any valid moves remain."""
         for action in range(4):
             test_board = self.board.copy()
             if action == 0:
-                _, moved = self._slide_up(test_board)
+                _, moved, _ = self._slide_up(test_board)
             elif action == 1:
-                _, moved = self._slide_down(test_board)
+                _, moved, _ = self._slide_down(test_board)
             elif action == 2:
-                _, moved = self._slide_left(test_board)
+                _, moved, _ = self._slide_left(test_board)
             elif action == 3:
-                _, moved = self._slide_right(test_board)
+                _, moved, _ = self._slide_right(test_board)
             
             if moved:
                 return True

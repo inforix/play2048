@@ -73,7 +73,7 @@ class AlphaZeroTrainer:
         )
         
         # Loss functions
-        self.policy_criterion = nn.CrossEntropyLoss()
+        # Policy uses soft targets from MCTS visit counts, so use KL-style loss
         self.value_criterion = nn.MSELoss()
     
     def train_epoch(
@@ -114,7 +114,9 @@ class AlphaZeroTrainer:
             policy_logits, values = self.model(states)
             
             # Calculate losses
-            policy_loss = self.policy_criterion(policy_logits, target_policies)
+            # CrossEntropyLoss expects class indices; instead compute CE with soft targets
+            log_probs = torch.log_softmax(policy_logits, dim=-1)
+            policy_loss = (-target_policies * log_probs).sum(dim=1).mean()
             value_loss = self.value_criterion(values, target_values)
             
             # Combined loss
@@ -183,11 +185,14 @@ def evaluate_models(
             add_noise=False
         )
         
-        # Compare scores
-        if new_stats['score'] > best_stats['score']:
+        # Compare by max tile first, then score as tiebreaker
+        if new_stats['max_tile'] > best_stats['max_tile']:
             new_wins += 1
-        elif new_stats['score'] == best_stats['score']:
-            draws += 1
+        elif new_stats['max_tile'] == best_stats['max_tile']:
+            if new_stats['score'] > best_stats['score']:
+                new_wins += 1
+            elif new_stats['score'] == best_stats['score']:
+                draws += 1
     
     win_rate = (new_wins + 0.5 * draws) / num_games
     return win_rate
